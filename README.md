@@ -1,4 +1,5 @@
 # rag-pipeline
+![CI](https://github.com/axiom-llc/rag-pipeline/actions/workflows/ci.yml/badge.svg)
 
 Production-grade Retrieval-Augmented Generation pipeline.  Ingest documents,
 embed them, store vectors locally, retrieve semantically, and generate grounded

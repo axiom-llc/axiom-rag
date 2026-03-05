@@ -1,0 +1,22 @@
+[
+  {
+    "query": "what is the refund policy?",
+    "relevant_doc_ids": ["refund-policy"]
+  },
+  {
+    "query": "how do I cancel my subscription?",
+    "relevant_doc_ids": ["subscription-terms"]
+  },
+  {
+    "query": "what data is collected about users?",
+    "relevant_doc_ids": ["privacy-policy"]
+  },
+  {
+    "query": "how long does shipping take?",
+    "relevant_doc_ids": ["shipping-policy"]
+  },
+  {
+    "query": "what payment methods are accepted?",
+    "relevant_doc_ids": ["payment-terms", "faq"]
+  }
+]

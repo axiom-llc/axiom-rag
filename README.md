@@ -214,6 +214,17 @@ tests/test_pipeline.py   — ingest/query integration, file and directory helper
 
 ---
 
+## Evaluation
+
+Retrieval quality is measured using Precision@k and MRR against a ground-truth dataset.
+```bash
+python eval/eval_retrieval.py --dataset eval/dataset.json
+```
+
+See [`eval/README.md`](eval/README.md) for full usage and tuning guidance.
+
+---
+
 ## License
 
 MIT — [Axiom LLC](https://axiom-llc.github.io)

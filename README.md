@@ -34,6 +34,13 @@ ChromaDB runs embedded.  The only network calls are to the Gemini API.
 ## Installation
 
 ```bash
+pip install axiom-rag
+cp .env.example .env  # set GEMINI_API_KEY
+```
+
+Or from source:
+
+```bash
 git clone https://github.com/axiom-llc/axiom-rag.git
 cd axiom-rag
 python3.11 -m venv .venv && source .venv/bin/activate

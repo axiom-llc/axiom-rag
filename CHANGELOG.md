@@ -37,5 +37,5 @@ Initial stable release.
 
 ---
 
-[1.0.1]: https://github.com/axiom-llc/rag-pipeline/releases/tag/v1.0.1
-[1.0.0]: https://github.com/axiom-llc/rag-pipeline/releases/tag/v1.0.0
+[1.0.1]: https://github.com/axiom-llc/axiom-rag/releases/tag/v1.0.1
+[1.0.0]: https://github.com/axiom-llc/axiom-rag/releases/tag/v1.0.0

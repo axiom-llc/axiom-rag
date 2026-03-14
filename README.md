@@ -1,5 +1,5 @@
-# rag-pipeline
-![CI](https://github.com/axiom-llc/rag-pipeline/actions/workflows/ci.yml/badge.svg)
+# axiom-rag
+![CI](https://github.com/axiom-llc/axiom-rag/actions/workflows/ci.yml/badge.svg)
 
 Production-grade Retrieval-Augmented Generation pipeline.  Ingest documents,
 embed them, store vectors locally, retrieve semantically, and generate grounded
@@ -34,8 +34,8 @@ ChromaDB runs embedded.  The only network calls are to the Gemini API.
 ## Installation
 
 ```bash
-git clone https://github.com/axiom-llc/rag-pipeline.git
-cd rag-pipeline
+git clone https://github.com/axiom-llc/axiom-rag.git
+cd axiom-rag
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e .
 

@@ -1,5 +1,5 @@
 """
-eval_retrieval.py — Retrieval quality evaluation for rag-pipeline.
+eval_retrieval.py — Retrieval quality evaluation for axiom-rag.
 
 Metrics:
     precision@k  — fraction of top-k retrieved chunks whose doc_id appears
@@ -92,7 +92,7 @@ def retrieve(
         from rag.config import load_config
         from rag import embedder, store
     except ImportError as exc:
-        print(f"error: could not import rag modules — run from the rag-pipeline root: {exc}", file=sys.stderr)
+        print(f"error: could not import rag modules — run from the axiom-rag root: {exc}", file=sys.stderr)
         sys.exit(2)
 
     cfg = load_config(

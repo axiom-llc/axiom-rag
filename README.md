@@ -261,4 +261,4 @@ See [`eval/README.md`](eval/README.md) for full usage and tuning guidance.
 
 ## License
 
-MIT — [Axiom LLC](https://axiom-llc.github.io)
+MIT — [AXIOM LLC](https://axiom-llc.github.io)

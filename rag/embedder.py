@@ -3,6 +3,7 @@ from google import genai
 from google.genai import types
 
 from rag.config import Config
+from rag.space import EmbeddingSpace
 
 _BATCH_LIMIT = 100
 
@@ -47,18 +48,20 @@ def embed_texts(texts: list[str], config: Config) -> list[list[float]]:
             response = client.models.embed_content(
                 model=config.embedding_model,
                 contents=[_content(_document_text(text)) for text in batch],
+                config=types.EmbedContentConfig(output_dimensionality=config.embedding_dimension),
             )
         else:
             response = client.models.embed_content(
                 model=config.embedding_model,
                 contents=batch,
-                config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT"),
+                config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT", output_dimensionality=config.embedding_dimension),
             )
         batch_embeddings = [list(item.values) for item in (response.embeddings or [])]
         if len(batch_embeddings) != len(batch):
             raise RuntimeError(
                 f"Embedding API returned {len(batch_embeddings)} vector(s) for {len(batch)} document(s)"
             )
+        EmbeddingSpace.configured(config).validate_vectors(batch_embeddings)
         embeddings.extend(batch_embeddings)
     return embeddings
 
@@ -71,13 +74,16 @@ def embed_query(query: str, config: Config) -> list[float]:
         response = client.models.embed_content(
             model=config.embedding_model,
             contents=_query_text(query),
+            config=types.EmbedContentConfig(output_dimensionality=config.embedding_dimension),
         )
     else:
         response = client.models.embed_content(
             model=config.embedding_model,
             contents=query,
-            config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY"),
+            config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY", output_dimensionality=config.embedding_dimension),
         )
     if not response.embeddings:
         raise RuntimeError("Embedding API returned no query embedding")
-    return list(response.embeddings[0].values)
+    vector = list(response.embeddings[0].values)
+    EmbeddingSpace.configured(config).validate_vectors([vector])
+    return vector

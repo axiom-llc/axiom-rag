@@ -12,9 +12,11 @@ def cfg(tmp_path):
     """Config pointing to a temp ChromaDB directory."""
     store._get_client.cache_clear()
     yield load_config(
+        embedding_dimension=8,
         gemini_api_key="test-key",
         chroma_path=str(tmp_path / "chroma"),
         collection_name="test_col",
+        embedding_model="gemini-embedding-2",
     )
     store._get_client.cache_clear()
 
@@ -81,9 +83,11 @@ class TestQuery:
         store.upsert(chunks, embeddings, "doc_q", cfg)
         # High threshold should filter everything (random embeddings ≠ query)
         high_cfg = load_config(
+            embedding_dimension=8,
             gemini_api_key="test-key",
             chroma_path=str(cfg.chroma_path),
             collection_name=cfg.collection_name,
+            embedding_model=cfg.embedding_model,
             score_threshold=0.9999,
             top_k=5,
         )
@@ -100,9 +104,11 @@ class TestQuery:
                 cfg,
             )
         low_threshold_cfg = load_config(
+            embedding_dimension=8,
             gemini_api_key="test-key",
             chroma_path=str(cfg.chroma_path),
             collection_name=cfg.collection_name,
+            embedding_model=cfg.embedding_model,
             score_threshold=0.0,
             top_k=5,
         )
@@ -125,7 +131,7 @@ class TestStats:
 
 
 def test_failed_replacement_preserves_existing_document(cfg):
-    store.upsert(["old one", "old two"], [[1.0, 0.0], [0.0, 1.0]], "keep", cfg)
+    store.upsert(["old one", "old two"], [[1.0] + [0.0] * 7, [0.0, 1.0] + [0.0] * 6], "keep", cfg)
     before = store._get_collection(cfg).get(where={"doc_id": "keep"})
     with pytest.raises(Exception, match="dimension"):
         store.upsert(["new"], [[1.0, 0.0, 0.0]], "keep", cfg)
@@ -133,7 +139,7 @@ def test_failed_replacement_preserves_existing_document(cfg):
 
 
 def test_mismatched_replacement_lengths_preserve_document(cfg):
-    store.upsert(["old"], [[1.0, 0.0]], "keep", cfg)
+    store.upsert(["old"], [[1.0] + [0.0] * 7], "keep", cfg)
     with pytest.raises(ValueError, match="same length"):
         store.upsert(["new"], [], "keep", cfg)
     assert store._get_collection(cfg).get(where={"doc_id": "keep"})["documents"] == ["old"]
@@ -141,10 +147,10 @@ def test_mismatched_replacement_lengths_preserve_document(cfg):
 
 def test_concurrent_replacements_do_not_mix_document_revisions(cfg):
     from concurrent.futures import ThreadPoolExecutor
-    store.upsert(["original"] * 3, [[1.0, 0.0]] * 3, "shared", cfg)
+    store.upsert(["original"] * 3, [[1.0] + [0.0] * 7] * 3, "shared", cfg)
 
     def replace_document(revision):
-        store.upsert([f"revision-{revision}"] * revision, [[1.0, 0.0]] * revision, "shared", cfg)
+        store.upsert([f"revision-{revision}"] * revision, [[1.0] + [0.0] * 7] * revision, "shared", cfg)
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(replace_document, [6, 2, 7, 1, 5, 3, 8, 4]))

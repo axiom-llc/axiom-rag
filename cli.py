@@ -8,6 +8,7 @@ Usage:
   rag list
   rag delete <doc_id>
   rag stats
+  rag create                 # requires an unused RAG_COLLECTION
 
 Environment:
   GEMINI_API_KEY   Required for ingest and query.
@@ -68,6 +69,10 @@ def main() -> None:
         result = pipeline.query(question, config)
         print(f"\n{result['answer']}\n")
         print(f"Sources ({result['chunk_count']} chunks):  {', '.join(result['sources']) or 'none'}")
+
+    elif cmd == "create":
+        store.create_collection(config)
+        print(f"Created {config.collection_name!r} with embedding provenance.")
 
     elif cmd == "list":
         docs = store.list_documents(config)

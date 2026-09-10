@@ -15,9 +15,11 @@ from rag import store, pipeline
 def cfg(tmp_path):
     store._get_client.cache_clear()
     yield load_config(
+        embedding_dimension=8,
         gemini_api_key="test-key",
         chroma_path=str(tmp_path / "chroma"),
         collection_name="pipe_test",
+        embedding_model="gemini-embedding-2",
     )
     store._get_client.cache_clear()
 

@@ -29,6 +29,7 @@ def ingest(
         store.delete_document(doc_id, config)
         return {"doc_id": doc_id, "chunks_stored": 0}
 
+    store._get_collection(config)  # Reject unknown/mismatched spaces before provider calls.
     embeddings = embedder.embed_texts(chunks, config)
     store.upsert(chunks, embeddings, doc_id, config, metadata)
     return {"doc_id": doc_id, "chunks_stored": len(chunks)}
@@ -36,6 +37,7 @@ def ingest(
 
 def pipeline_query(question: str, config: Config) -> dict:
     """Retrieve matching chunks and generate a grounded answer."""
+    store._get_collection(config)
     query_embedding = embedder.embed_query(question, config)
     chunks = store.store_query(query_embedding, config)
     result = generator.generate_answer(question, chunks, config)

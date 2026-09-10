@@ -16,6 +16,7 @@ class Config:
     score_threshold: float
     embedding_model: str
     generation_model: str
+    embedding_dimension: int = 3072
 
     def requires_api_key(self) -> None:
         if not self.gemini_api_key:
@@ -44,8 +45,13 @@ def load_config(**overrides) -> Config:
         top_k=get("top_k", "RAG_TOP_K", 5, int),
         score_threshold=get("score_threshold", "RAG_SCORE_THRESHOLD", 0.4, float),
         embedding_model=get("embedding_model", "RAG_EMBEDDING_MODEL", "models/text-embedding-004"),
+        embedding_dimension=get("embedding_dimension", "RAG_EMBEDDING_DIMENSION", 3072, int),
         generation_model=get("generation_model", "RAG_GENERATION_MODEL", "gemini-2.5-flash"),
     )
+    if config.embedding_dimension <= 0:
+        raise ValueError("RAG_EMBEDDING_DIMENSION must be positive")
+    if not config.embedding_model.removeprefix("models/").strip():
+        raise ValueError("RAG_EMBEDDING_MODEL must not be empty")
     if config.chunk_size <= 0:
         raise ValueError("RAG_CHUNK_SIZE must be greater than 0")
     if config.chunk_overlap < 0 or config.chunk_overlap >= config.chunk_size:

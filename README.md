@@ -220,6 +220,7 @@ automatically — no manual `export` required.
 | `RAG_CHUNK_OVERLAP`     | `64`                           | Overlap between consecutive chunks |
 | `RAG_TOP_K`             | `5`                            | Max chunks retrieved per query     |
 | `RAG_SCORE_THRESHOLD`   | `0.4`                          | Min cosine similarity (0–1)        |
+| `RAG_EMBEDDING_DIMENSION` | `3072` | Requested and enforced vector length |
 | `RAG_EMBEDDING_MODEL`   | `models/text-embedding-004`  | Gemini embedding model             |
 | `RAG_GENERATION_MODEL`  | `gemini-2.5-flash`             | Gemini generation model            |
 
@@ -287,3 +288,49 @@ must serialize writes to the same document across processes. APEX's existing imp
 
 When developing all packages locally, install `axiom-rag` before `axiom-apex`,
 then `axiom-ason`. Release them in that order for the new minimum versions.
+
+### Collection compatibility and future reindexing
+
+New collections store `rag:embedding:provider` (`google-gemini`), `model`
+(normalized without `models/`), `dimension`, and integer `schema` (currently 1).
+Schema 1 includes this adapter's retrieval document/query preprocessing.
+`RAG_EMBEDDING_DIMENSION` defaults to 3072 and is explicitly requested from the
+provider; returned and supplied vectors must match it. Raw-vector callers must
+supply vectors from the declared model/adapter, not merely matching lengths.
+
+Every semantic query and mutation validates this identity. Missing, partial,
+or conflicting metadata fails closed, including empty untagged collections.
+No existing metadata is adopted or rewritten. Empty collections are not adopted
+because a count check followed by metadata assignment cannot exclude concurrent
+writers. `rag list` and `rag stats` permit non-embedding inspection and do not
+create a collection. Chroma may perform database maintenance when opened; use
+read-only SQLite or a copy when byte-for-byte preservation is required.
+
+Existing names/defaults remain unchanged. APEX delegates to this same boundary;
+its different model default does not authorize access to an unknown collection.
+The legacy `documents` collection has unverified provenance and must be preserved.
+
+For a future authorized reindex, choose an **unused** namespace explicitly:
+
+```bash
+export RAG_EMBEDDING_MODEL=gemini-embedding-2
+export RAG_EMBEDDING_DIMENSION=3072
+export RAG_COLLECTION=documents-gemini-embedding-2-v1
+rag create
+rag ingest /path/to/verified-source-corpus
+```
+
+`rag create` needs no provider credentials and fails if the name already exists.
+Ingestion requires credentials. Retries use the same tagged collection and source
+IDs; directory ingestion uses relative paths. Keep the corpus and chunk settings
+fixed across retries. Validate retrieval before explicitly configuring each
+consumer with the new collection, model, and dimension. No automatic cutover,
+legacy deletion, or in-place conversion occurs. Rollback preserves the old state;
+it does not make unknown or retired embedding spaces safe to query.
+
+The supported replacement candidate is documented by
+[Google](https://ai.google.dev/gemini-api/docs/models/gemini-embedding-2).
+Its availability does not establish compatibility with existing vectors.
+Direct Chroma access or external metadata changes are outside this library's
+invariant; restrict other writers. Existing in-process replacement serialization
+is preserved, without claiming cross-process transactional replacement.

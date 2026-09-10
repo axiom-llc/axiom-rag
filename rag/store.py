@@ -7,6 +7,8 @@ import chromadb
 from chromadb.config import Settings
 
 from rag.config import Config
+from rag.space import EmbeddingSpace
+from chromadb.errors import NotFoundError
 
 _init_lock = threading.Lock()
 _write_lock = threading.RLock()
@@ -21,12 +23,33 @@ def _get_client(path: str) -> chromadb.PersistentClient:
         )
 
 
-def _get_collection(config: Config):
+def _existing_collection(config: Config):
     path = str(Path(config.chroma_path).expanduser())
-    return _get_client(path).get_or_create_collection(
+    try:
+        return _get_client(path).get_collection(config.collection_name, embedding_function=None)
+    except NotFoundError:
+        return None
+
+
+def create_collection(config: Config):
+    """Create a fresh tagged namespace. Never adopt or overwrite an existing one."""
+    identity = EmbeddingSpace.configured(config)
+    return _get_client(str(Path(config.chroma_path).expanduser())).create_collection(
         name=config.collection_name,
-        metadata={"hnsw:space": "cosine"},
+        metadata={"hnsw:space": "cosine", **identity.metadata()},
+        embedding_function=None,
     )
+
+
+def _get_collection(config: Config):
+    with _write_lock:
+        identity = EmbeddingSpace.configured(config)
+        collection = _existing_collection(config)
+        if collection is None:
+            # A concurrent creator causes an explicit failure, never metadata adoption.
+            collection = create_collection(config)
+        identity.validate(collection.metadata, config.collection_name)
+        return collection
 
 
 def upsert(
@@ -40,6 +63,7 @@ def upsert(
     with _write_lock:
         if len(chunks) != len(embeddings):
             raise ValueError("chunks and embeddings must have the same length")
+        EmbeddingSpace.configured(config).validate_vectors(embeddings)
         collection = _get_collection(config)
         existing = collection.get(where={"doc_id": doc_id}, include=[])
         if not chunks:
@@ -67,6 +91,7 @@ def upsert(
 
 def store_query(query_embedding: list[float], config: Config) -> list[dict]:
     """Return relevant chunks at or above score_threshold, sorted descending."""
+    EmbeddingSpace.configured(config).validate_vectors([query_embedding])
     collection = _get_collection(config)
     count = collection.count()
     if count == 0:
@@ -100,7 +125,9 @@ def delete_document(doc_id: str, config: Config) -> int:
 
 def list_documents(config: Config) -> list[str]:
     """Return sorted unique document identifiers in the collection."""
-    collection = _get_collection(config)
+    collection = _existing_collection(config)
+    if collection is None:
+        return []
     results = collection.get(include=["metadatas"])
     return sorted(
         {
@@ -113,8 +140,8 @@ def list_documents(config: Config) -> list[str]:
 
 def collection_stats(config: Config) -> dict:
     """Return total chunk count and sorted document identifiers."""
-    collection = _get_collection(config)
-    return {"total_chunks": collection.count(), "documents": list_documents(config)}
+    collection = _existing_collection(config)
+    return {"total_chunks": collection.count() if collection else 0, "documents": list_documents(config)}
 
 
 def query(query_embedding: list[float], config: Config) -> list[dict]:

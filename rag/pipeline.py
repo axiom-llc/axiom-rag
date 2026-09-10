@@ -1,17 +1,19 @@
-"""Public interface for the RAG pipeline.
-
-Two primary functions: ingest() and query().
-All other modules are implementation details; callers should not import them.
-
-ingest() — chunk → embed → store
-query()  — embed query → retrieve → generate
-"""
-from __future__ import annotations
+"""Public ingest and query interface for the in-process RAG pipeline."""
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from rag import chunker, embedder, generator, store
 from rag.config import Config
-from rag import chunker, embedder, store, generator
+
+_STRATEGIES = {"fixed", "sentences"}
+
+
+def _chunks(text: str, config: Config, strategy: str) -> list[str]:
+    if strategy not in _STRATEGIES:
+        raise ValueError(f"strategy must be one of: {', '.join(sorted(_STRATEGIES))}")
+    if strategy == "sentences":
+        return chunker.chunk_sentences(text, config.chunk_size)
+    return chunker.chunk_fixed(text, config.chunk_size, config.chunk_overlap)
 
 
 def ingest(
@@ -21,44 +23,21 @@ def ingest(
     metadata: dict | None = None,
     strategy: str = "fixed",
 ) -> dict:
-    """Chunk, embed, and store a document.
-
-    Args:
-        text:     Full document text.
-        doc_id:   Stable unique identifier (filename, URL, UUID, …).
-        config:   Resolved Config instance.
-        metadata: Optional key-value pairs stored alongside every chunk.
-        strategy: "fixed" (default) or "sentences".
-
-    Returns:
-        {"doc_id": str, "chunks_stored": int}
-    """
-    if strategy == "sentences":
-        chunks = chunker.chunk_sentences(text, config.chunk_size)
-    else:
-        chunks = chunker.chunk_fixed(text, config.chunk_size, config.chunk_overlap)
-
+    """Chunk, embed, and replace one document in the vector store."""
+    chunks = _chunks(text, config, strategy)
     if not chunks:
+        store.delete_document(doc_id, config)
         return {"doc_id": doc_id, "chunks_stored": 0}
 
-    all_embeddings = embedder.embed_texts(chunks, config)
-    store.upsert(chunks, all_embeddings, doc_id, config, metadata)
+    embeddings = embedder.embed_texts(chunks, config)
+    store.upsert(chunks, embeddings, doc_id, config, metadata)
     return {"doc_id": doc_id, "chunks_stored": len(chunks)}
 
 
-def query(question: str, config: Config) -> dict:
-    """Retrieve relevant chunks and generate a grounded answer.
-
-    Returns:
-        {
-            "answer":      str,
-            "sources":     list[str],
-            "chunks":      list[dict],  # retrieved context with scores
-            "chunk_count": int,
-        }
-    """
-    q_embedding = embedder.embed_query(question, config)
-    chunks = store.query(q_embedding, config)
+def pipeline_query(question: str, config: Config) -> dict:
+    """Retrieve matching chunks and generate a grounded answer."""
+    query_embedding = embedder.embed_query(question, config)
+    chunks = store.store_query(query_embedding, config)
     result = generator.generate_answer(question, chunks, config)
     return {**result, "chunks": chunks}
 
@@ -68,11 +47,18 @@ def ingest_file(
     config: Config,
     metadata: dict | None = None,
     strategy: str = "fixed",
+    doc_id: str | None = None,
 ) -> dict:
-    """Read a file and ingest it.  doc_id is set to the filename."""
-    p = Path(path).expanduser()
-    text = p.read_text(encoding="utf-8", errors="replace")
-    return ingest(text, doc_id=p.name, config=config, metadata=metadata, strategy=strategy)
+    """Read and ingest one UTF-8 text file."""
+    file_path = Path(path).expanduser()
+    text = file_path.read_text(encoding="utf-8", errors="replace")
+    return ingest(
+        text,
+        doc_id=doc_id or file_path.name,
+        config=config,
+        metadata=metadata,
+        strategy=strategy,
+    )
 
 
 def ingest_directory(
@@ -82,39 +68,43 @@ def ingest_directory(
     strategy: str = "fixed",
     max_workers: int = 4,
 ) -> list[dict]:
-    """Ingest all matching files in a directory (recursive), in parallel.
+    """Recursively ingest matching files concurrently and return deterministic results."""
+    if max_workers <= 0:
+        raise ValueError("max_workers must be greater than 0")
+    _chunks("", config, strategy)  # Validate strategy before scanning.
 
-    Files are embedded concurrently using a thread pool.  The Gemini embedding
-    API is network-bound, so parallel requests reduce wall-clock time
-    significantly for large corpora.
+    root = Path(directory).expanduser()
+    if not root.is_dir():
+        raise ValueError(f"directory not found: {root}")
+    suffixes = set(extensions or [".txt", ".md"])
+    paths = sorted(
+        (path for path in root.rglob("*") if path.is_file() and path.suffix in suffixes),
+        key=lambda path: path.relative_to(root).as_posix(),
+    )
+    if not paths:
+        return []
 
-    ChromaDB's Rust backend is not thread-safe during first initialisation, so
-    the client is pre-warmed on the calling thread before the pool spawns.
-    Subsequent upserts are serialised internally by ChromaDB's write lock.
-
-    Args:
-        extensions:  File extensions to match (default: [".txt", ".md"]).
-        max_workers: Thread pool size.  4 is a safe default; increase for
-                     large corpora with low API latency.
-
-    Returns:
-        List of ingest result dicts, one per file, in completion order.
-    """
-    d = Path(directory).expanduser()
-    exts = set(extensions or [".txt", ".md"])
-    paths = [p for p in d.rglob("*") if p.is_file() and p.suffix in exts]
-
-    # Pre-warm the ChromaDB client on the calling thread before spawning workers.
-    # This ensures the LRU cache is populated and the Rust backend is fully
-    # initialised before any worker thread touches it.
     store._get_client(str(Path(config.chroma_path).expanduser()))
-
-    results: list[dict] = []
+    indexed_results: dict[int, dict] = {}
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = {
-            pool.submit(ingest_file, str(p), config, None, strategy): p
-            for p in paths
+            pool.submit(
+                ingest_file,
+                str(path),
+                config,
+                None,
+                strategy,
+                path.relative_to(root).as_posix(),
+            ): index
+            for index, path in enumerate(paths)
         }
         for future in as_completed(futures):
-            results.append(future.result())
-    return results
+            indexed_results[futures[future]] = future.result()
+    return [indexed_results[index] for index in range(len(paths))]
+
+
+def query(target: str | list[float], config: Config) -> dict | list[dict]:
+    """Query by natural-language question or an already computed embedding."""
+    if isinstance(target, list):
+        return store.store_query(target, config)
+    return pipeline_query(target, config)

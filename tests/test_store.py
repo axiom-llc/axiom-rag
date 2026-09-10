@@ -122,3 +122,32 @@ class TestStats:
         s = store.collection_stats(cfg)
         assert s["total_chunks"] == 5
         assert set(s["documents"]) == {"a", "b"}
+
+
+def test_failed_replacement_preserves_existing_document(cfg):
+    store.upsert(["old one", "old two"], [[1.0, 0.0], [0.0, 1.0]], "keep", cfg)
+    before = store._get_collection(cfg).get(where={"doc_id": "keep"})
+    with pytest.raises(Exception, match="dimension"):
+        store.upsert(["new"], [[1.0, 0.0, 0.0]], "keep", cfg)
+    assert store._get_collection(cfg).get(where={"doc_id": "keep"}) == before
+
+
+def test_mismatched_replacement_lengths_preserve_document(cfg):
+    store.upsert(["old"], [[1.0, 0.0]], "keep", cfg)
+    with pytest.raises(ValueError, match="same length"):
+        store.upsert(["new"], [], "keep", cfg)
+    assert store._get_collection(cfg).get(where={"doc_id": "keep"})["documents"] == ["old"]
+
+
+def test_concurrent_replacements_do_not_mix_document_revisions(cfg):
+    from concurrent.futures import ThreadPoolExecutor
+    store.upsert(["original"] * 3, [[1.0, 0.0]] * 3, "shared", cfg)
+
+    def replace_document(revision):
+        store.upsert([f"revision-{revision}"] * revision, [[1.0, 0.0]] * revision, "shared", cfg)
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(replace_document, [6, 2, 7, 1, 5, 3, 8, 4]))
+    documents = store._get_collection(cfg).get(where={"doc_id": "shared"})["documents"]
+    assert len(set(documents)) == 1
+    assert len(documents) == int(documents[0].split("-")[-1])

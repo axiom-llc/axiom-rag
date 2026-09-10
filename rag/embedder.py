@@ -1,50 +1,83 @@
-"""Gemini embedding adapter.
-
-Stateless — takes text, returns float vectors.  Batches up to 100 texts per
-API call (Gemini embedding API limit).
-
-task_type asymmetry
-    Gemini's text-embedding-004 model is trained with asymmetric tasks:
-    - "retrieval_document" for content being indexed
-    - "retrieval_query"    for the search query at retrieval time
-    Using the wrong type measurably degrades retrieval precision.
-    Both are set explicitly; do not remove them.
-"""
-from __future__ import annotations
+"""Gemini text embedding adapter for retrieval documents and queries."""
 from google import genai
 from google.genai import types
+
 from rag.config import Config
 
 _BATCH_LIMIT = 100
 
 
 def _client(config: Config) -> genai.Client:
+    if config.embedding_model.rsplit("/", 1)[-1] == "text-embedding-004":
+        raise ValueError(
+            "text-embedding-004 was retired on 2026-01-14. Set RAG_EMBEDDING_MODEL "
+            "to an available model and re-ingest documents into a fresh RAG_COLLECTION; "
+            "do not mix embedding spaces in an existing collection."
+        )
     return genai.Client(api_key=config.gemini_api_key)
 
 
+def _embedding_2(model: str) -> bool:
+    return model.rsplit("/", 1)[-1] == "gemini-embedding-2"
+
+
+def _document_text(text: str) -> str:
+    return f"title: none | text: {text}"
+
+
+def _query_text(query: str) -> str:
+    return f"task: search result | query: {query}"
+
+
+def _content(text: str) -> types.Content:
+    return types.Content(parts=[types.Part.from_text(text=text)])
+
+
 def embed_texts(texts: list[str], config: Config) -> list[list[float]]:
-    """Embed a list of document texts.  Returns one vector per text."""
+    """Embed document texts and return one vector per input text."""
+    if not texts:
+        return []
     config.requires_api_key()
     client = _client(config)
-    all_embeddings: list[list[float]] = []
-    for i in range(0, len(texts), _BATCH_LIMIT):
-        batch = texts[i : i + _BATCH_LIMIT]
-        response = client.models.embed_content(
-            model=config.embedding_model,
-            contents=batch,
-            config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT"),
-        )
-        all_embeddings.extend(e.values for e in response.embeddings)
-    return all_embeddings
+    embeddings: list[list[float]] = []
+
+    for index in range(0, len(texts), _BATCH_LIMIT):
+        batch = texts[index : index + _BATCH_LIMIT]
+        if _embedding_2(config.embedding_model):
+            response = client.models.embed_content(
+                model=config.embedding_model,
+                contents=[_content(_document_text(text)) for text in batch],
+            )
+        else:
+            response = client.models.embed_content(
+                model=config.embedding_model,
+                contents=batch,
+                config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT"),
+            )
+        batch_embeddings = [list(item.values) for item in (response.embeddings or [])]
+        if len(batch_embeddings) != len(batch):
+            raise RuntimeError(
+                f"Embedding API returned {len(batch_embeddings)} vector(s) for {len(batch)} document(s)"
+            )
+        embeddings.extend(batch_embeddings)
+    return embeddings
 
 
 def embed_query(query: str, config: Config) -> list[float]:
-    """Embed a single query string for retrieval."""
+    """Embed one retrieval query."""
     config.requires_api_key()
     client = _client(config)
-    response = client.models.embed_content(
-        model=config.embedding_model,
-        contents=query,
-        config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY"),
-    )
+    if _embedding_2(config.embedding_model):
+        response = client.models.embed_content(
+            model=config.embedding_model,
+            contents=_query_text(query),
+        )
+    else:
+        response = client.models.embed_content(
+            model=config.embedding_model,
+            contents=query,
+            config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY"),
+        )
+    if not response.embeddings:
+        raise RuntimeError("Embedding API returned no query embedding")
     return list(response.embeddings[0].values)

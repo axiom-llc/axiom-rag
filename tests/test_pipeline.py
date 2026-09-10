@@ -57,6 +57,27 @@ def mock_gemini():
 
 
 class TestIngest:
+    def test_replacement_removes_stale_chunks(self, cfg):
+        pipeline.ingest("word " * 1500, doc_id="replace", config=cfg)
+        result = pipeline.ingest("short replacement", doc_id="replace", config=cfg)
+        assert store.collection_stats(cfg)["total_chunks"] == result["chunks_stored"] == 1
+
+    def test_empty_replacement_removes_previous_document(self, cfg):
+        pipeline.ingest("old content", doc_id="empty", config=cfg)
+        pipeline.ingest("", doc_id="empty", config=cfg)
+        assert store.list_documents(cfg) == []
+
+    def test_embedding_failure_preserves_document(self, cfg):
+        pipeline.ingest("old content", doc_id="keep", config=cfg)
+        with patch("rag.embedder.embed_texts", side_effect=RuntimeError("provider unavailable")):
+            with pytest.raises(RuntimeError):
+                pipeline.ingest("replacement", doc_id="keep", config=cfg)
+        assert store._get_collection(cfg).get(where={"doc_id": "keep"})["documents"] == ["old content"]
+
+    def test_invalid_strategy_fails_before_store_changes(self, cfg):
+        with pytest.raises(ValueError, match="strategy"):
+            pipeline.ingest("text", doc_id="x", config=cfg, strategy="typo")
+
     def test_empty_text_returns_zero_chunks(self, cfg):
         result = pipeline.ingest("", doc_id="empty", config=cfg)
         assert result == {"doc_id": "empty", "chunks_stored": 0}
@@ -93,6 +114,15 @@ class TestIngest:
 
 
 class TestIngestFile:
+    def test_nested_duplicate_filenames_are_distinct_and_sorted(self, cfg, tmp_path):
+        root = tmp_path / "documents"
+        for directory in ("b", "a"):
+            (root / directory).mkdir(parents=True)
+            (root / directory / "same.txt").write_text(directory + " content")
+        results = pipeline.ingest_directory(str(root), cfg)
+        assert [result["doc_id"] for result in results] == ["a/same.txt", "b/same.txt"]
+        assert store.list_documents(cfg) == ["a/same.txt", "b/same.txt"]
+
     def test_ingest_file_uses_filename_as_doc_id(self, cfg, tmp_path):
         f = tmp_path / "sample.txt"
         f.write_text("content of the sample file " * 10)

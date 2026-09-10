@@ -1,17 +1,4 @@
-"""ChromaDB vector store abstraction.
-
-All ChromaDB access is contained here.  To swap in pgvector: implement the
-same public functions (upsert, query, delete_document, list_documents,
-collection_stats) in a new store_pg.py and update the import in pipeline.py.
-Nothing else changes.
-
-Client caching
-    _get_client() is LRU-cached on the resolved path string.  A threading lock
-    serialises first-time initialisation — ChromaDB's Rust backend is not
-    thread-safe during construction.  Subsequent calls hit the cache and bypass
-    the lock entirely.  Tests should call _get_client.cache_clear() in teardown.
-"""
-from __future__ import annotations
+"""ChromaDB persistence for the in-process RAG pipeline."""
 import threading
 from functools import lru_cache
 from pathlib import Path
@@ -22,6 +9,7 @@ from chromadb.config import Settings
 from rag.config import Config
 
 _init_lock = threading.Lock()
+_write_lock = threading.RLock()
 
 
 @lru_cache(maxsize=8)
@@ -48,63 +36,86 @@ def upsert(
     config: Config,
     metadata: dict | None = None,
 ) -> None:
-    """Upsert chunks into the vector store.  Idempotent on doc_id + chunk index."""
-    collection = _get_collection(config)
-    ids = [f"{doc_id}::{i}" for i in range(len(chunks))]
-    metas = [
-        {**(metadata or {}), "doc_id": doc_id, "chunk_index": i}
-        for i in range(len(chunks))
-    ]
-    collection.upsert(
-        ids=ids,
-        embeddings=embeddings,
-        documents=chunks,
-        metadatas=metas,
-    )
+    """Replace all chunks for doc_id with the supplied chunks and embeddings."""
+    with _write_lock:
+        if len(chunks) != len(embeddings):
+            raise ValueError("chunks and embeddings must have the same length")
+        collection = _get_collection(config)
+        existing = collection.get(where={"doc_id": doc_id}, include=[])
+        if not chunks:
+            if existing["ids"]:
+                collection.delete(ids=existing["ids"])
+            return
+
+        ids = [f"{doc_id}::{index}" for index in range(len(chunks))]
+        metadatas = [
+            {**(metadata or {}), "doc_id": doc_id, "chunk_index": index}
+            for index in range(len(chunks))
+        ]
+        collection.upsert(
+            ids=ids,
+            embeddings=embeddings,
+            documents=chunks,
+            metadatas=metadatas,
+        )
+        # Validate and write the replacement before deleting stale chunks. In
+        # particular, a rejected embedding dimension must not destroy the document.
+        stale = sorted(set(existing["ids"]) - set(ids))
+        if stale:
+            collection.delete(ids=stale)
 
 
-def query(query_embedding: list[float], config: Config) -> list[dict]:
-    """Return top-k chunks at or above score_threshold, sorted by relevance desc."""
+def store_query(query_embedding: list[float], config: Config) -> list[dict]:
+    """Return relevant chunks at or above score_threshold, sorted descending."""
     collection = _get_collection(config)
+    count = collection.count()
+    if count == 0:
+        return []
     results = collection.query(
         query_embeddings=[query_embedding],
-        n_results=config.top_k,
+        n_results=min(config.top_k, count),
         include=["documents", "metadatas", "distances"],
     )
+    documents = (results.get("documents") or [[]])[0]
+    metadatas = (results.get("metadatas") or [[]])[0]
+    distances = (results.get("distances") or [[]])[0]
     chunks = []
-    for doc, meta, dist in zip(
-        results["documents"][0],
-        results["metadatas"][0],
-        results["distances"][0],
-    ):
-        score = 1.0 - dist  # cosine distance → cosine similarity
+    for document, metadata, distance in zip(documents, metadatas, distances):
+        score = 1.0 - float(distance)
         if score >= config.score_threshold:
-            chunks.append({"text": doc, "metadata": meta, "score": score})
-    return sorted(chunks, key=lambda x: x["score"], reverse=True)
+            chunks.append({"text": document, "metadata": metadata, "score": score})
+    return sorted(chunks, key=lambda chunk: chunk["score"], reverse=True)
 
 
 def delete_document(doc_id: str, config: Config) -> int:
-    """Delete all chunks for a document.  Returns the count deleted."""
-    collection = _get_collection(config)
-    results = collection.get(where={"doc_id": doc_id})
-    if results["ids"]:
-        collection.delete(ids=results["ids"])
-    return len(results["ids"])
+    """Delete all chunks for a document and return the deleted count."""
+    with _write_lock:
+        collection = _get_collection(config)
+        results = collection.get(where={"doc_id": doc_id}, include=[])
+        ids = results["ids"]
+        if ids:
+            collection.delete(ids=ids)
+        return len(ids)
 
 
 def list_documents(config: Config) -> list[str]:
-    """Return sorted unique doc_ids present in the collection."""
+    """Return sorted unique document identifiers in the collection."""
     collection = _get_collection(config)
     results = collection.get(include=["metadatas"])
-    return sorted({m.get("doc_id", "unknown") for m in results["metadatas"]})
+    return sorted(
+        {
+            metadata.get("doc_id", "unknown")
+            for metadata in (results.get("metadatas") or [])
+            if metadata is not None
+        }
+    )
 
 
 def collection_stats(config: Config) -> dict:
-    """Return total chunk count and document list in a single collection access."""
+    """Return total chunk count and sorted document identifiers."""
     collection = _get_collection(config)
-    results = collection.get(include=["metadatas"])
-    doc_ids = sorted({m.get("doc_id", "unknown") for m in results["metadatas"]})
-    return {
-        "total_chunks": collection.count(),
-        "documents": doc_ids,
-    }
+    return {"total_chunks": collection.count(), "documents": list_documents(config)}
+
+
+def query(query_embedding: list[float], config: Config) -> list[dict]:
+    return store_query(query_embedding, config)

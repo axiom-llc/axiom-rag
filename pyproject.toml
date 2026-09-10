@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "axiom-rag"
-version = "1.0.1"
+version = "1.1.0"
 description = "Production RAG pipeline — grounded retrieval, source-cited answers, Precision@k + MRR eval"
 authors = [{ name = "Axiom LLC", email = "axiom.co@proton.me" }]
 readme = "README.md"
@@ -22,6 +22,7 @@ dependencies = [
     "google-genai>=1.0",
     "chromadb>=0.5",
     "flask>=3.0",
+    "python-dotenv>=1",
 ]
 
 [project.optional-dependencies]
@@ -34,6 +35,9 @@ rag = "cli:main"
 Homepage = "https://axiom-llc.github.io"
 Repository = "https://github.com/axiom-llc/axiom-rag"
 Changelog = "https://github.com/axiom-llc/axiom-rag/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+py-modules = ["cli"]
 
 [tool.setuptools.packages.find]
 include = ["rag*", "server*"]

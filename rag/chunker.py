@@ -1,64 +1,49 @@
-"""Text chunking strategies.
-
-Both functions return list[str].  Strategy is selected at ingest time via
-pipeline.ingest(strategy=...).
-
-chunk_size is measured in **words**, not tokens.  For English prose,
-word count ≈ 0.75 × token count, so the default of 512 words corresponds
-to roughly 680 tokens — comfortably within Gemini's embedding context window.
-Adjust RAG_CHUNK_SIZE empirically for your domain and script.
-
-Fixed-size (default)
-    Splits on word boundaries to approximately chunk_size words, with a
-    configurable word-level overlap between consecutive chunks.  Overlap
-    preserves context that would otherwise be severed at a boundary.
-
-Sentence
-    Groups sentences (split on sentence-ending punctuation) until chunk_size
-    words is reached.  Better recall for prose; less predictable for structured
-    or technical documents.
-"""
+"""Deterministic word-window and sentence-aware text chunking."""
 from __future__ import annotations
+
 import re
 
 
 def chunk_fixed(text: str, chunk_size: int, overlap: int) -> list[str]:
-    """Split text into overlapping fixed-size chunks (word-boundary aligned).
+    """Split text into word-bounded chunks with a fixed word overlap."""
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be greater than 0")
+    if overlap < 0 or overlap >= chunk_size:
+        raise ValueError("overlap must be >= 0 and less than chunk_size")
 
-    Args:
-        text:       Input text.
-        chunk_size: Maximum words per chunk.
-        overlap:    Words of overlap between consecutive chunks. Must be < chunk_size.
-    """
-    if overlap >= chunk_size:
-        raise ValueError("overlap must be less than chunk_size")
     words = text.split()
-    chunks: list[str] = []
-    i = 0
-    while i < len(words):
-        chunks.append(" ".join(words[i : i + chunk_size]))
-        i += chunk_size - overlap
-    return [c for c in chunks if c.strip()]
+    step = chunk_size - overlap
+    return [
+        " ".join(words[index : index + chunk_size])
+        for index in range(0, len(words), step)
+        if words[index : index + chunk_size]
+    ]
 
 
 def chunk_sentences(text: str, chunk_size: int) -> list[str]:
-    """Group sentences into chunks of up to chunk_size words.
+    """Group sentences without exceeding chunk_size words; split oversized sentences."""
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be greater than 0")
 
-    Args:
-        text:       Input text.
-        chunk_size: Maximum words per chunk.
-    """
-    sentences = re.split(r"(?<=[.!?])\s+", text)
+    sentences = [sentence.strip() for sentence in re.split(r"(?<=[.!?])\s+", text) if sentence.strip()]
     chunks: list[str] = []
     current: list[str] = []
     count = 0
+
     for sentence in sentences:
-        word_count = len(sentence.split())
-        if count + word_count > chunk_size and current:
+        words = sentence.split()
+        if len(words) > chunk_size:
+            if current:
+                chunks.append(" ".join(current))
+                current, count = [], 0
+            chunks.extend(chunk_fixed(sentence, chunk_size, 0))
+            continue
+        if current and count + len(words) > chunk_size:
             chunks.append(" ".join(current))
             current, count = [], 0
         current.append(sentence)
-        count += word_count
+        count += len(words)
+
     if current:
         chunks.append(" ".join(current))
-    return [c for c in chunks if c.strip()]
+    return chunks

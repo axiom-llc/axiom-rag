@@ -20,7 +20,7 @@ Python 3.11+ · Gemini API · ChromaDB · Flask · MIT
 
 ## What It Does
 
-1. **Ingest** — chunks documents, embeds them via Gemini `gemini-embedding-001`,
+1. **Ingest** — chunks documents, embeds them via the configured Gemini embedding model,
    and stores vectors in a local ChromaDB collection
 2. **Retrieve** — embeds the query and finds the top-k most semantically
    similar chunks above a configurable similarity threshold
@@ -83,8 +83,13 @@ Store-only commands (`list`, `delete`, `stats`) do not require `GEMINI_API_KEY`.
 ## REST API
 
 ```bash
-python -m server.app   # default: 0.0.0.0:8000
+python -m server.app   # default: 127.0.0.1:8000
 ```
+
+For a non-loopback bind, set `RAG_HOST` and a non-empty `RAG_API_TOKEN`.
+Clients send `Authorization: Bearer <token>`. The server refuses an unauthenticated
+non-loopback bind. Authentication failures return 401, malformed inputs return
+400, and HTTP routing errors retain their status codes.
 
 ### `POST /ingest`
 
@@ -142,7 +147,7 @@ query / ingest
   rag/pipeline.py               ← ingest() and query(); public interface
       │
       ├─ rag/chunker.py         ← fixed-size or sentence-boundary chunking
-      ├─ rag/embedder.py        ← Gemini gemini-embedding-001 (stateless)
+      ├─ rag/embedder.py        ← Gemini embedding adapter (stateless)
       ├─ rag/store.py           ← ChromaDB upsert / cosine retrieval
       └─ rag/generator.py       ← Gemini 2.5 Flash; context-grounded answers
 
@@ -157,11 +162,14 @@ no globals, no module-level singletons.
 
 ## Design Notes
 
-**Embedding model.**  This pipeline uses `models/gemini-embedding-001`, the
-currently available Gemini embedding model via the `google-genai` SDK.  The
-default in `config.py` and `.env.example` reflects this.  Use
-`RAG_EMBEDDING_MODEL` to override if your API key has access to additional
-models.
+**Embedding model.** The legacy default remains `models/text-embedding-004`
+to preserve existing configuration. Google [retired this model on January 14,
+2026](https://ai.google.dev/gemini-api/docs/deprecations). This is a deployment
+migration requirement, not a working model default. Embedding operations fail
+locally with reindexing instructions before contacting the retired endpoint. Select an available model explicitly with
+`RAG_EMBEDDING_MODEL` for deployment. Re-embed into a fresh collection when
+changing models; vectors from different embedding spaces must not be mixed.
+APEX preserves its own model defaults through its config adapter.
 
 **Embedding asymmetry.**  The Gemini embedding API distinguishes `task_type`:
 `RETRIEVAL_DOCUMENT` for ingestion and `RETRIEVAL_QUERY` for queries.  Using
@@ -212,7 +220,7 @@ automatically — no manual `export` required.
 | `RAG_CHUNK_OVERLAP`     | `64`                           | Overlap between consecutive chunks |
 | `RAG_TOP_K`             | `5`                            | Max chunks retrieved per query     |
 | `RAG_SCORE_THRESHOLD`   | `0.4`                          | Min cosine similarity (0–1)        |
-| `RAG_EMBEDDING_MODEL`   | `models/gemini-embedding-001`  | Gemini embedding model             |
+| `RAG_EMBEDDING_MODEL`   | `models/text-embedding-004`  | Gemini embedding model             |
 | `RAG_GENERATION_MODEL`  | `gemini-2.5-flash`             | Gemini generation model            |
 
 ---
@@ -262,3 +270,20 @@ See [`eval/README.md`](eval/README.md) for full usage and tuning guidance.
 ## License
 
 MIT — [AXIOM LLC](https://axiom-llc.github.io)
+
+## Shared retrieval and document replacement
+
+Version 1.1 is the canonical retrieval implementation used by APEX 3.1.
+It incorporates APEX's validated chunk limits, embedding-count checks, empty-store
+handling, and deterministic recursive ingestion. Single-file ingestion keeps
+filename IDs; directory ingestion uses paths relative to the input directory,
+so `a/faq.txt` and `b/faq.txt` remain distinct documents.
+
+Re-ingestion replaces a document, removing stale chunks after the replacement
+write succeeds. Empty text removes the previous document. A rejected embedding
+write leaves the existing document intact. Replacement spans multiple ChromaDB
+operations, not a transaction. Writes are serialized within a process; callers
+must serialize writes to the same document across processes. APEX's existing import paths and model defaults remain supported.
+
+When developing all packages locally, install `axiom-rag` before `axiom-apex`,
+then `axiom-ason`. Release them in that order for the new minimum versions.

@@ -290,7 +290,9 @@ New collections store `rag:embedding:provider` (`google-gemini`), `model`
 (normalized without `models/`), `dimension`, and integer `schema` (currently 1).
 Schema 1 includes this adapter's retrieval document/query preprocessing.
 `RAG_EMBEDDING_DIMENSION` defaults to 3072 and is explicitly requested from the
-provider; returned and supplied vectors must match it. Raw-vector callers must
+provider; returned and supplied vectors must match it. NaN and infinity are
+rejected before vector-store access, preserving existing chunks on invalid
+replacement input. Raw-vector callers must
 supply vectors from the declared model/adapter, not merely matching lengths.
 
 Every semantic query and mutation validates this identity. Missing, partial,

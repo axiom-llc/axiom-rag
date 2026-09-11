@@ -146,3 +146,39 @@ def test_default_namespace_avoids_legacy_collection(monkeypatch, tmp_path):
     monkeypatch.setenv('RAG_COLLECTION', 'documents')
     with pytest.raises(ValueError, match='unknown embedding provenance'):
         store._get_collection(load_config(chroma_path=str(tmp_path)))
+
+
+@pytest.mark.parametrize('value', [float('nan'), float('inf'), -float('inf')])
+def test_nonfinite_replacement_preserves_all_chunks(cfg, value):
+    store.upsert(['old one', 'old two', 'old three'], [[1., 0., 0.]] * 3, 'doc', cfg)
+    col = store._get_collection(cfg)
+    before = col.get(include=['documents', 'embeddings', 'metadatas'])
+    with pytest.raises(ValueError, match='finite'):
+        store.upsert(['new one', 'new two'], [[0., 1., 0.], [value, 0., 0.]], 'doc', cfg)
+    after = col.get(include=['documents', 'embeddings', 'metadatas'])
+    for key in ['ids', 'documents', 'metadatas']:
+        assert after[key] == before[key]
+    assert (after['embeddings'] == before['embeddings']).all()
+
+
+@pytest.mark.parametrize('value', [float('nan'), float('inf'), -float('inf')])
+def test_nonfinite_vectors_rejected_before_store_access(cfg, value):
+    with patch('rag.store._get_collection') as collection:
+        for operation in [lambda: store.upsert(['bad'], [[value, 0., 0.]], 'doc', cfg),
+                          lambda: store.query([0., value, 0.], cfg)]:
+            with pytest.raises(ValueError, match='finite'):
+                operation()
+        collection.assert_not_called()
+    assert store._existing_collection(cfg) is None
+
+
+@pytest.mark.parametrize('value', [float('nan'), float('inf'), -float('inf')])
+def test_nonfinite_provider_vectors_rejected(cfg, value):
+    from types import SimpleNamespace
+    with patch('rag.embedder.genai.Client') as client:
+        client.return_value.models.embed_content.return_value = SimpleNamespace(
+            embeddings=[SimpleNamespace(values=[0., 0., value])])
+        with pytest.raises(ValueError, match='finite'):
+            embedder.embed_texts(['text'], cfg)
+        with pytest.raises(ValueError, match='finite'):
+            embedder.embed_query('question', cfg)

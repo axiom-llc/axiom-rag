@@ -1,5 +1,6 @@
 """Identity of the canonical Gemini retrieval adapter, not inferred vector provenance."""
 from dataclasses import dataclass, asdict
+from math import isfinite
 from rag.config import Config
 
 
@@ -34,3 +35,5 @@ class EmbeddingSpace:
     def validate_vectors(self, vectors):
         if any(len(vector) != self.dimension for vector in vectors):
             raise ValueError(f"Embedding dimension must equal configured dimension {self.dimension}")
+        if any(not isfinite(value) for vector in vectors for value in vector):
+            raise ValueError("Embedding values must be finite")

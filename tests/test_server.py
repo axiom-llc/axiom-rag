@@ -66,3 +66,17 @@ def test_nonlocal_bind_requires_auth(monkeypatch, host, token, allowed):
         with pytest.raises(SystemExit):
             api.main()
         run.assert_not_called()
+
+
+def test_provider_error_does_not_leak_body_or_credentials(monkeypatch, caplog):
+    from google.genai.errors import ClientError
+    import server.app as api
+    monkeypatch.setattr(api, '_api_token', '')
+    def fail(*args, **kwargs):
+        raise ClientError(400, {'error': {'message': 'secret-key private-document', 'status': 'INVALID_ARGUMENT'}})
+    monkeypatch.setattr(api.pipeline, 'query', fail)
+    response = api.app.test_client().post('/query', json={'question': 'test'})
+    assert response.status_code == 502
+    assert response.get_json() == {'error': 'upstream API error'}
+    assert 'secret-key' not in caplog.text
+    assert 'private-document' not in caplog.text

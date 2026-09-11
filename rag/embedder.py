@@ -15,7 +15,9 @@ def _client(config: Config) -> genai.Client:
             "to an available model and re-ingest documents into a fresh RAG_COLLECTION; "
             "do not mix embedding spaces in an existing collection."
         )
-    return genai.Client(api_key=config.gemini_api_key)
+    return genai.Client(api_key=config.gemini_api_key, http_options=types.HttpOptions(
+        timeout=60000, retry_options=types.HttpRetryOptions(attempts=1)
+    ))
 
 
 def _embedding_2(model: str) -> bool:

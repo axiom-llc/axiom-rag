@@ -31,7 +31,9 @@ def generate_answer(
         for chunk in context_chunks
     )
     prompt = f"Context:\n{context_block}\n\nQuestion: {query}"
-    client = genai.Client(api_key=config.gemini_api_key)
+    client = genai.Client(api_key=config.gemini_api_key, http_options=types.HttpOptions(
+        timeout=60000, retry_options=types.HttpRetryOptions(attempts=1)
+    ))
     response = client.models.generate_content(
         model=config.generation_model,
         contents=prompt,

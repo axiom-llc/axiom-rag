@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "axiom-rag"
-version = "1.3.0"
+version = "1.3.1"
 description = "Production RAG pipeline — grounded retrieval, source-cited answers, Precision@k + MRR eval"
 authors = [{ name = "Axiom LLC", email = "axiom.co@proton.me" }]
 readme = "README.md"
@@ -19,7 +19,7 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "google-genai>=1.0",
+    "google-genai>=1.66.0",
     "chromadb>=1.0",
     "flask>=3.0",
     "python-dotenv>=1",

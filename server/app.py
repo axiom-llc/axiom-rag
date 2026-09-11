@@ -64,13 +64,13 @@ def handle_error(exc: Exception):
     try:
         from google.genai import errors as genai_errors
         if isinstance(exc, genai_errors.APIError):
-            app.logger.error("Gemini API error: %s", exc)
-            return jsonify({"error": "upstream API error", "detail": str(exc)}), 502
+            app.logger.error("Gemini API request failed")
+            return jsonify({"error": "upstream API error"}), 502
     except ImportError:
         pass
     if isinstance(exc, ValueError):
         return jsonify({"error": str(exc)}), 400
-    app.logger.exception("Unhandled error")
+    app.logger.error("Unhandled server error")
     return jsonify({"error": "internal server error"}), 500
 
 

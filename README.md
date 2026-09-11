@@ -335,3 +335,17 @@ Its availability does not establish compatibility with existing vectors.
 Direct Chroma access or external metadata changes are outside this library's
 invariant; restrict other writers. Existing in-process replacement serialization
 is preserved, without claiming cross-process transactional replacement.
+
+### Live provider checks
+
+On 2026-09-11, explicit manual checks created one synthetic document in temporary
+Chroma storage using `gemini-embedding-2`. Ingestion, 3072-dimensional vectors,
+provenance metadata, semantic retrieval, and grounded `gemini-2.5-flash` generation
+passed. A nonexistent embedding model returned HTTP 404; the retired model was
+rejected locally. Both persistent collections remained byte-for-byte unchanged.
+
+Gemini requests use a 60-second HTTP timeout and one SDK attempt. Retry explicitly
+after assessing the failure; generation may already have consumed provider quota.
+HTTP endpoints return a generic 502 for provider API failures and omit upstream
+error bodies from responses and logs. Keep live checks manual and use synthetic
+input with temporary storage; do not place live credentials in CI.

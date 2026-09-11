@@ -162,19 +162,14 @@ no globals, no module-level singletons.
 
 ## Design Notes
 
-**Embedding model.** The legacy default remains `models/text-embedding-004`
-to preserve existing configuration. Google [retired this model on January 14,
-2026](https://ai.google.dev/gemini-api/docs/deprecations). This is a deployment
-migration requirement, not a working model default. Embedding operations fail
-locally with reindexing instructions before contacting the retired endpoint. Select an available model explicitly with
-`RAG_EMBEDDING_MODEL` for deployment. Re-embed into a fresh collection when
-changing models; vectors from different embedding spaces must not be mixed.
-APEX preserves its own model defaults through its config adapter.
+**Embedding model.** Use `gemini-embedding-2` with the default fresh namespace
+`documents-gemini-embedding-2`. The retired `text-embedding-004` still fails
+closed. Re-embed into an unused collection when changing models; never mix
+embedding spaces. APEX uses the same canonical collection and embedding defaults.
 
-**Embedding asymmetry.**  The Gemini embedding API distinguishes `task_type`:
-`RETRIEVAL_DOCUMENT` for ingestion and `RETRIEVAL_QUERY` for queries.  Using
-the wrong type for either degrades retrieval precision measurably.  Both are
-set explicitly in `embedder.py`.
+**Embedding asymmetry.** Gemini Embedding 2 uses explicit document and search
+query prefixes in `embedder.py`. Other models use `RETRIEVAL_DOCUMENT` and
+`RETRIEVAL_QUERY` task types.
 
 **Score threshold.**  Retrieved chunks below the configured cosine similarity
 floor (`RAG_SCORE_THRESHOLD`, default `0.4`) are dropped before generation.
@@ -215,13 +210,13 @@ automatically — no manual `export` required.
 |-------------------------|--------------------------------|------------------------------------|
 | `GEMINI_API_KEY`        | *(required for embed/generate)*| Gemini API key                     |
 | `RAG_CHROMA_PATH`       | `~/.rag/chroma`                | ChromaDB persistence directory     |
-| `RAG_COLLECTION`        | `documents`                    | ChromaDB collection name           |
+| `RAG_COLLECTION`        | `documents-gemini-embedding-2` | ChromaDB collection name           |
 | `RAG_CHUNK_SIZE`        | `512`                          | Approximate words per chunk        |
 | `RAG_CHUNK_OVERLAP`     | `64`                           | Overlap between consecutive chunks |
 | `RAG_TOP_K`             | `5`                            | Max chunks retrieved per query     |
 | `RAG_SCORE_THRESHOLD`   | `0.4`                          | Min cosine similarity (0–1)        |
 | `RAG_EMBEDDING_DIMENSION` | `3072` | Requested and enforced vector length |
-| `RAG_EMBEDDING_MODEL`   | `models/text-embedding-004`  | Gemini embedding model             |
+| `RAG_EMBEDDING_MODEL`   | `gemini-embedding-2`         | Gemini embedding model             |
 | `RAG_GENERATION_MODEL`  | `gemini-2.5-flash`             | Gemini generation model            |
 
 ---
@@ -306,9 +301,15 @@ writers. `rag list` and `rag stats` permit non-embedding inspection and do not
 create a collection. Chroma may perform database maintenance when opened; use
 read-only SQLite or a copy when byte-for-byte preservation is required.
 
-Existing names/defaults remain unchanged. APEX delegates to this same boundary;
-its different model default does not authorize access to an unknown collection.
-The legacy `documents` collection has unverified provenance and must be preserved.
+The default namespace is `documents-gemini-embedding-2`; explicit environment
+overrides remain authoritative. APEX delegates to this same boundary. The legacy
+`documents` collection remains unverified and is never adopted automatically.
+
+The local development corpus was re-ingested on 2026-09-11: seven `testdata`
+files, eight chunks, 3072 dimensions. Live refund, shipping, and payment retrieval
+checks passed before default cutover. The old `documents` collection remains
+preserved as legacy rollback evidence; no provenance was assigned retroactively.
+This records a local migration, not migration of external deployments.
 
 For a future authorized reindex, choose an **unused** namespace explicitly:
 

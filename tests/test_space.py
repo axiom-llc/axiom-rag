@@ -129,3 +129,20 @@ def test_server_rejects_legacy_embedding_operations(cfg, monkeypatch):
             assert 'unknown embedding provenance' in response.get_json()['error']
         provider.assert_not_called()
     assert col.get()['documents'] == ['old']
+
+
+def test_default_namespace_avoids_legacy_collection(monkeypatch, tmp_path):
+    from rag.config import load_config
+    for name in ['RAG_COLLECTION', 'RAG_EMBEDDING_MODEL', 'RAG_EMBEDDING_DIMENSION']:
+        monkeypatch.delenv(name, raising=False)
+    config = load_config(chroma_path=str(tmp_path))
+    legacy = store._get_client(str(tmp_path)).create_collection('documents')
+    legacy.add(ids=['old'], embeddings=[[1., 0., 0.]], documents=['legacy'])
+    assert config.embedding_model == 'gemini-embedding-2'
+    assert config.collection_name == 'documents-gemini-embedding-2'
+    store.create_collection(config)
+    assert legacy.get()['documents'] == ['legacy']
+    assert legacy.metadata is None
+    monkeypatch.setenv('RAG_COLLECTION', 'documents')
+    with pytest.raises(ValueError, match='unknown embedding provenance'):
+        store._get_collection(load_config(chroma_path=str(tmp_path)))

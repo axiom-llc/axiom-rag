@@ -39,12 +39,12 @@ def load_config(**overrides) -> Config:
     config = Config(
         gemini_api_key=api_key,
         chroma_path=get("chroma_path", "RAG_CHROMA_PATH", "~/.rag/chroma"),
-        collection_name=get("collection_name", "RAG_COLLECTION", "documents"),
+        collection_name=get("collection_name", "RAG_COLLECTION", "documents-gemini-embedding-2"),
         chunk_size=get("chunk_size", "RAG_CHUNK_SIZE", 512, int),
         chunk_overlap=get("chunk_overlap", "RAG_CHUNK_OVERLAP", 64, int),
         top_k=get("top_k", "RAG_TOP_K", 5, int),
         score_threshold=get("score_threshold", "RAG_SCORE_THRESHOLD", 0.4, float),
-        embedding_model=get("embedding_model", "RAG_EMBEDDING_MODEL", "models/text-embedding-004"),
+        embedding_model=get("embedding_model", "RAG_EMBEDDING_MODEL", "gemini-embedding-2"),
         embedding_dimension=get("embedding_dimension", "RAG_EMBEDDING_DIMENSION", 3072, int),
         generation_model=get("generation_model", "RAG_GENERATION_MODEL", "gemini-2.5-flash"),
     )

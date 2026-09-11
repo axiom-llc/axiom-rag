@@ -275,11 +275,53 @@ handling, and deterministic recursive ingestion. Single-file ingestion keeps
 filename IDs; directory ingestion uses paths relative to the input directory,
 so `a/faq.txt` and `b/faq.txt` remain distinct documents.
 
-Re-ingestion replaces a document, removing stale chunks after the replacement
-write succeeds. Empty text removes the previous document. A rejected embedding
-write leaves the existing document intact. Replacement spans multiple ChromaDB
-operations, not a transaction. Writes are serialized within a process; callers
-must serialize writes to the same document across processes. APEX's existing import paths and model defaults remain supported.
+Re-ingestion replaces a document using opaque IDs and increasing generation
+metadata (legacy records without a generation are generation 0). Empty
+replacement retains the existing deletion semantics. Invalid dimensions and
+non-finite embeddings are rejected before storage mutation.
+
+### Local ownership and process-crash recovery
+
+On Linux, the shared store boundary acquires an exclusive advisory `flock`
+before opening Chroma and retains one client and lock per canonical persistence
+root until process exit. A second cooperating process fails explicitly. Stop the
+owner before using embedded CLI/APEX access to the same root, or use the running
+server's HTTP API. CLI and Python calls do not yet become HTTP clients. Do not
+use multiple server workers, fork an initialized owner, replace/unlink the lock
+file, or modify the root through a direct Chroma client.
+
+`python -m server.app` acquires ownership and recovers before serving. Embedded
+and other WSGI entry points acquire ownership/recover at first store access.
+Supported store reads and mutations serialize under one process lock; embedding
+and generation requests remain outside that lock. Private collection/client
+handles are outside the read-consistency guarantee.
+
+Before staging any new chunk, `.rag-journal` records the complete old and new
+IDs in a file-synchronized `STAGING` intent. Staging uses separate records and
+preserves the old generation. After verifying target IDs and identity metadata,
+an atomic file replacement and directory synchronization persist `COMMITTED`;
+only then are old records retired. Deletes use the same decision protocol with
+an empty target set. A successful return follows journal removal.
+
+On startup or the next store access after an exception:
+
+- `STAGING`: remove staged records and preserve the old generation.
+- `COMMITTED`: verify the target records, preserve them and finish old cleanup.
+- Malformed journals, identity mismatches or missing committed records: fail
+  closed and retain the journal for operator diagnosis. Do not delete it to
+  bypass recovery.
+
+Recovery can itself be interrupted and repeated. Temporary journal files have
+no authority until renamed; no Chroma mutation precedes durable intent. A caller
+whose process/connection failed may not know whether commit occurred; this is
+not request deduplication or automatic retry authorization.
+
+The supported evidence is process termination on a local Linux filesystem with
+Chroma **1.5.2**, pinned for reproducible recovery behavior. Tests interrupt
+staging, commit, cleanup and recovery and reopen real persistent stores. This
+journal does **not** establish host-power-loss/kernel-panic atomicity across
+Chroma SQLite/HNSW, protection from non-cooperating access, or distributed writer
+coordination. APEX's existing import paths and model defaults remain supported.
 
 When developing all packages locally, install `axiom-rag` before `axiom-apex`,
 then `axiom-ason`. Release them in that order for the new minimum versions.
@@ -335,8 +377,8 @@ The supported replacement candidate is documented by
 [Google](https://ai.google.dev/gemini-api/docs/models/gemini-embedding-2).
 Its availability does not establish compatibility with existing vectors.
 Direct Chroma access or external metadata changes are outside this library's
-invariant; restrict other writers. Existing in-process replacement serialization
-is preserved, without claiming cross-process transactional replacement.
+invariant; restrict other writers. Cooperative process exclusion and journal recovery apply at the shared store
+boundary; external direct access remains unsupported.
 
 ### Live provider checks
 

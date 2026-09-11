@@ -57,6 +57,7 @@ def test_http_error_status_and_headers_preserved(client):
 def test_nonlocal_bind_requires_auth(monkeypatch, host, token, allowed):
     monkeypatch.setenv("RAG_HOST", host)
     monkeypatch.setattr(api, "_api_token", token)
+    monkeypatch.setattr(api.store, "_get_collection", Mock())
     run = Mock()
     monkeypatch.setattr(api.app, "run", run)
     if allowed:
@@ -80,3 +81,15 @@ def test_provider_error_does_not_leak_body_or_credentials(monkeypatch, caplog):
     assert response.get_json() == {'error': 'upstream API error'}
     assert 'secret-key' not in caplog.text
     assert 'private-document' not in caplog.text
+
+
+def test_startup_recovery_failure_prevents_serving(monkeypatch):
+    monkeypatch.setenv('RAG_HOST', '127.0.0.1')
+    def blocked(config):
+        raise RuntimeError('RAG recovery blocked')
+    monkeypatch.setattr(api.store, '_get_collection', blocked)
+    run = Mock()
+    monkeypatch.setattr(api.app, 'run', run)
+    with pytest.raises(RuntimeError, match='recovery blocked'):
+        api.main()
+    run.assert_not_called()

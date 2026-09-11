@@ -154,6 +154,7 @@ def main():
         loopback = False
     if not loopback and not _api_token:
         raise SystemExit("Set RAG_API_TOKEN before binding to a non-loopback address")
+    store._get_collection(_get_config())  # Own and recover before serving.
     app.run(debug=False, host=host, port=8000)
 
 

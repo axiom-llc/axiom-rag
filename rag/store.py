@@ -1,28 +1,36 @@
 """ChromaDB persistence for the in-process RAG pipeline."""
-import threading
-from functools import lru_cache
+from functools import wraps
 from pathlib import Path
-
-import chromadb
-from chromadb.config import Settings
 
 from rag.config import Config
 from rag.space import EmbeddingSpace
+from rag import persistence
 from chromadb.errors import NotFoundError
 
-_init_lock = threading.Lock()
-_write_lock = threading.RLock()
+_write_lock = persistence.lock
 
 
-@lru_cache(maxsize=8)
-def _get_client(path: str) -> chromadb.PersistentClient:
-    with _init_lock:
-        return chromadb.PersistentClient(
-            path=path,
-            settings=Settings(anonymized_telemetry=False),
-        )
+def _get_client(path):
+    return persistence.get_client(path)
 
 
+def _retain_owners():
+    """Legacy test cache-clear hook: ownership must last until process exit."""
+
+
+_get_client.cache_clear = _retain_owners
+
+
+def _serialized(function):
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        persistence.check_process()
+        with _write_lock:
+            return function(*args, **kwargs)
+    return wrapped
+
+
+@_serialized
 def _existing_collection(config: Config):
     path = str(Path(config.chroma_path).expanduser())
     try:
@@ -31,6 +39,7 @@ def _existing_collection(config: Config):
         return None
 
 
+@_serialized
 def create_collection(config: Config):
     """Create a fresh tagged namespace. Never adopt or overwrite an existing one."""
     identity = EmbeddingSpace.configured(config)
@@ -41,17 +50,18 @@ def create_collection(config: Config):
     )
 
 
+@_serialized
 def _get_collection(config: Config):
-    with _write_lock:
-        identity = EmbeddingSpace.configured(config)
-        collection = _existing_collection(config)
-        if collection is None:
-            # A concurrent creator causes an explicit failure, never metadata adoption.
-            collection = create_collection(config)
-        identity.validate(collection.metadata, config.collection_name)
-        return collection
+    identity = EmbeddingSpace.configured(config)
+    collection = _existing_collection(config)
+    if collection is None:
+        # A concurrent creator causes an explicit failure, never metadata adoption.
+        collection = create_collection(config)
+    identity.validate(collection.metadata, config.collection_name)
+    return collection
 
 
+@_serialized
 def upsert(
     chunks: list[str],
     embeddings: list[list[float]],
@@ -60,35 +70,14 @@ def upsert(
     metadata: dict | None = None,
 ) -> None:
     """Replace all chunks for doc_id with the supplied chunks and embeddings."""
-    with _write_lock:
-        if len(chunks) != len(embeddings):
-            raise ValueError("chunks and embeddings must have the same length")
-        EmbeddingSpace.configured(config).validate_vectors(embeddings)
-        collection = _get_collection(config)
-        existing = collection.get(where={"doc_id": doc_id}, include=[])
-        if not chunks:
-            if existing["ids"]:
-                collection.delete(ids=existing["ids"])
-            return
-
-        ids = [f"{doc_id}::{index}" for index in range(len(chunks))]
-        metadatas = [
-            {**(metadata or {}), "doc_id": doc_id, "chunk_index": index}
-            for index in range(len(chunks))
-        ]
-        collection.upsert(
-            ids=ids,
-            embeddings=embeddings,
-            documents=chunks,
-            metadatas=metadatas,
-        )
-        # Validate and write the replacement before deleting stale chunks. In
-        # particular, a rejected embedding dimension must not destroy the document.
-        stale = sorted(set(existing["ids"]) - set(ids))
-        if stale:
-            collection.delete(ids=stale)
+    if len(chunks) != len(embeddings):
+        raise ValueError("chunks and embeddings must have the same length")
+    EmbeddingSpace.configured(config).validate_vectors(embeddings)
+    collection = _get_collection(config)
+    persistence.replace(collection, config.chroma_path, chunks, embeddings, doc_id, metadata)
 
 
+@_serialized
 def store_query(query_embedding: list[float], config: Config) -> list[dict]:
     """Return relevant chunks at or above score_threshold, sorted descending."""
     EmbeddingSpace.configured(config).validate_vectors([query_embedding])
@@ -112,17 +101,14 @@ def store_query(query_embedding: list[float], config: Config) -> list[dict]:
     return sorted(chunks, key=lambda chunk: chunk["score"], reverse=True)
 
 
+@_serialized
 def delete_document(doc_id: str, config: Config) -> int:
     """Delete all chunks for a document and return the deleted count."""
-    with _write_lock:
-        collection = _get_collection(config)
-        results = collection.get(where={"doc_id": doc_id}, include=[])
-        ids = results["ids"]
-        if ids:
-            collection.delete(ids=ids)
-        return len(ids)
+    collection = _get_collection(config)
+    return persistence.replace(collection, config.chroma_path, [], [], doc_id, None)
 
 
+@_serialized
 def list_documents(config: Config) -> list[str]:
     """Return sorted unique document identifiers in the collection."""
     collection = _existing_collection(config)
@@ -138,6 +124,7 @@ def list_documents(config: Config) -> list[str]:
     )
 
 
+@_serialized
 def collection_stats(config: Config) -> dict:
     """Return total chunk count and sorted document identifiers."""
     collection = _existing_collection(config)

@@ -57,7 +57,7 @@ def test_http_error_status_and_headers_preserved(client):
 def test_nonlocal_bind_requires_auth(monkeypatch, host, token, allowed):
     monkeypatch.setenv("RAG_HOST", host)
     monkeypatch.setattr(api, "_api_token", token)
-    monkeypatch.setattr(api.store, "_get_collection", Mock())
+    monkeypatch.setattr(api.store, "_get_client", Mock())
     run = Mock()
     monkeypatch.setattr(api.app, "run", run)
     if allowed:
@@ -87,7 +87,7 @@ def test_startup_recovery_failure_prevents_serving(monkeypatch):
     monkeypatch.setenv('RAG_HOST', '127.0.0.1')
     def blocked(config):
         raise RuntimeError('RAG recovery blocked')
-    monkeypatch.setattr(api.store, '_get_collection', blocked)
+    monkeypatch.setattr(api.store, '_get_client', blocked)
     run = Mock()
     monkeypatch.setattr(api.app, 'run', run)
     with pytest.raises(RuntimeError, match='recovery blocked'):

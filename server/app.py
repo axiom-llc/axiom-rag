@@ -56,6 +56,8 @@ def _check_auth() -> None:
 
 @app.errorhandler(Exception)
 def handle_error(exc: Exception):
+    if request.path.startswith("/v1/"):
+        return _compat_error(exc)
     if isinstance(exc, HTTPException):
         response = exc.get_response()
         response.data = app.json.dumps({"error": exc.description})
@@ -146,6 +148,10 @@ def stats():
     return jsonify(store.collection_stats(_get_config()))
 
 
+from server import compat
+
+_compat_error = compat.register(app, lambda: _get_config(), lambda: _check_auth())
+
 def main():
     host = os.environ.get("RAG_HOST", "127.0.0.1")
     try:
@@ -154,7 +160,9 @@ def main():
         loopback = False
     if not loopback and not _api_token:
         raise SystemExit("Set RAG_API_TOKEN before binding to a non-loopback address")
-    store._get_collection(_get_config())  # Own and recover before serving.
+    config = _get_config()
+    compat.policy(config)  # Fail closed on malformed server authority.
+    store._get_client(config.chroma_path)  # Own and recover without creating namespaces.
     app.run(debug=False, host=host, port=8000)
 
 

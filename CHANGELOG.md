@@ -5,6 +5,19 @@ Versioning: Semantic Versioning (semver.org)
 
 ---
 
+## [1.4.0] — 2026-09-12
+
+### Added
+- Versioned namespace/configuration, lossless pipeline and raw-vector HTTP operations.
+- Bounded standard-library HTTP client with no Chroma fallback or automatic retries.
+- Transport acceptance tests including separate-owner HTTP process-crash recovery.
+
+### Changed
+- Server startup recovers the owned root without creating a collection.
+- Explicit server namespace/model authority for the compatibility API; existing HTTP routes and local CLI/APEX callers remain supported.
+
+---
+
 ## [1.0.1] — 2026-03-07
 
 ### Fixed

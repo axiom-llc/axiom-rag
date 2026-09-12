@@ -393,3 +393,112 @@ after assessing the failure; generation may already have consumed provider quota
 HTTP endpoints return a generic 502 for provider API failures and omit upstream
 error bodies from responses and logs. Keep live checks manual and use synthetic
 input with temporary storage; do not place live credentials in CI.
+
+## Versioned HTTP compatibility client
+
+The existing five HTTP routes retain their validation, trimming, response shapes
+and provider-error containment. A separate `/v1` surface supports future CLI/APEX
+storage migration. CLI, embedded Python exports and evaluators remain local in
+this release; `rag_multi_query` continues using the existing `/query` route.
+
+The server owns one `RAG_CHROMA_PATH`. Startup acquires the owner lock and recovers
+pending journals **without creating any missing collection**. Supported data
+operations retain existing get-or-create behavior for a missing allowed namespace;
+`/v1/create` specifically means create-only-unused. Inspection never creates or
+adopts a namespace. Unknown existing provenance permits inspection only.
+
+`RAG_HTTP_NAMESPACES` is an optional JSON object mapping exact collection names to
+`{"provider":"google-gemini","model":MODEL,"dimension":INTEGER,"schema":1}`.
+When absent, only the existing `RAG_COLLECTION` with its configured embedding
+identity is allowed. If supplied, the map must include that default with the same
+identity, because legacy routes still use it. Extra names and identities must be
+configured explicitly. Invalid configuration prevents normal startup and returns
+`server_unconfigured` on versioned requests in other launch modes. There is no
+HTTP root selection, namespace enumeration outside the allowlist, or provenance
+adoption. An unconfigured name returns `namespace_not_allowed`.
+
+`RAG_HTTP_GENERATION_MODELS` is an optional JSON array of permitted model IDs.
+Its default is the two existing defaults (`gemini-2.5-flash` and
+`gemini-3.5-flash-lite`) plus the server's explicitly configured generation model.
+Requests must choose the model explicitly. This is a permission list, not a claim
+of external model availability. HTTP text operations use server credentials;
+client provider keys and filesystem paths are never sent. Standalone provider
+calls and evaluator embedding can retain their local credentials.
+
+Every versioned operation is `POST`, accepts a strict JSON object, and returns
+JSON with status 200 on success. Unknown fields and duplicate keys are rejected.
+All operations require `namespace`; all except inspection also require `space`
+with exact `provider`, `model`, integer `dimension`, and integer `schema` matching
+server configuration. No caller-supplied space can retag a collection.
+
+| Route | Additional request fields | Success |
+| --- | --- | --- |
+| `/v1/inspect` | None | `namespace`, `exists`, configured `space`, `stored_space` (null if missing, null fields if unknown), default `settings`, `generation_models`, `total_chunks`, sorted `documents` |
+| `/v1/create` | None | `{namespace, created: true}`; existing namespace is 409 even if compatible/empty |
+| `/v1/ingest` | Exact `text`, nonempty exact `doc_id`, `strategy` (`fixed`/`sentences`), `settings: {chunk_size, chunk_overlap}`, optional `metadata` | `{doc_id, chunks_stored}`; empty text deletes after validation without embedding |
+| `/v1/replace` | `doc_id`, complete `chunks` and `embeddings` arrays of equal length, optional `metadata` | JSON null; empty arrays delete |
+| `/v1/fetch` | `vector`, `settings: {top_k, score_threshold}` | Ranked list of `{text, metadata, score}`; no embedding/generation |
+| `/v1/query` | Exact `question` (including blank), `settings: {top_k, score_threshold, generation_model}` | Existing pipeline `{answer, sources, chunk_count, chunks}` |
+| `/v1/delete` | Exact `doc_id` in JSON, including leading slashes/spaces | `{doc_id, chunks_deleted}` |
+
+There is no raw stored-vector export or arbitrary document lookup: current callers
+need vector-based retrieval (`fetch`) and replacement. Vectors are transmitted
+without normalization; Chroma retains its existing numeric storage precision.
+Vectors must have the configured dimension and finite numeric values (booleans
+are rejected). IDs are never trimmed or interpreted as paths. Scalar write
+metadata accepts null as the entire metadata value, or a string-keyed object of
+strings, booleans, integers and finite floats; null values, lists, nested objects
+and Python objects are rejected before mutation. Reserved persisted identity and
+journal fields are still overwritten by the owner. Existing JSON-safe read
+metadata is returned unchanged; serialization failures return a contained error.
+Raw vectors are trusted caller assertions of provenance, not attestations.
+
+Chunk/ranking controls retain canonical validation: positive integer size/k,
+`0 <= overlap < size`, finite threshold in `[-1,1]`. All selected configuration is
+validated on each operation; inspection does not establish a cached authorization.
+
+Versioned failures have `{"error":{"code":CODE,"outcome":OUTCOME}}`.
+`outcome` is `not_started` for pre-dispatch rejection and `unknown` once dispatch
+has begun. It concerns the requested operation, not recovery of earlier work.
+Errors never expose exception/provider bodies or credentials.
+
+| Status | Stable codes |
+| --- | --- |
+| 400 | `invalid_request`, `invalid_vector`; `operation_failed` for downstream value errors |
+| 401 | `unauthorized` |
+| 403 | `namespace_not_allowed`, `model_not_allowed` |
+| 404 / 405 / 413 | `not_found` / `method_not_allowed` / `request_too_large` |
+| 409 | `space_mismatch`, `namespace_exists` |
+| 502 | `provider_error` |
+| 503 | `server_unconfigured`, `storage_unavailable` (including ownership/recovery failure) |
+
+A downstream error, disconnect or timeout can follow a committed mutation. Never
+infer rollback from HTTP status. The client performs no retries or direct-store
+fallback. Server journal recovery remains authoritative; process-crash guarantees
+and the existing power-loss limitations are unchanged. Create is not a journaled
+document replacement. Existing bearer authentication and non-loopback binding
+restrictions apply; this remains a trusted-application service, not tenant isolation.
+
+`rag.http_client.Client(base_url, namespace, space, token=...)` requires an explicit
+service target and embedding-space assertion. Its `inspect`, `create`, `ingest`,
+`replace`, `fetch`, `query`, and `delete` methods cover the table; ingest/query/fetch
+require explicit settings as keyword arguments. No local Config, root mapping,
+provider key, Chroma client or collection handle is accepted. Future CLI adapters
+must explicitly map their selected root to a service, retain local file scanning,
+and preserve the RAG/APEX resolved model defaults when calling `query`.
+
+The standard-library client makes one request, refuses redirects, checks response
+shapes, and has configurable `timeout=60` seconds and 16 MiB request/response byte
+limits (`max_request_bytes`, `max_response_bytes`). Timeout bounds socket I/O, not
+whole-pipeline wall time; enclosing executors must supply their own total deadline.
+`RemoteError` exposes `code`, `outcome`, and optional HTTP `status`; malformed or
+oversized responses and transport failures have unknown outcome. Local JSON/size
+validation errors happen before sending. No new dependencies are required.
+
+Transport acceptance (including loopback sockets, a separate owner, abrupt server
+exit before/after journal commit, and repeated recovery):
+
+```sh
+python -m pytest tests/test_http_compat.py -q
+python -m pytest tests -q
+```

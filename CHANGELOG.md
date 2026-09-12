@@ -5,6 +5,14 @@ Versioning: Semantic Versioning (semver.org)
 
 ---
 
+## [1.5.0] — Unreleased
+
+### Changed
+- CLI and APEX public storage adapters use the bounded HTTP client, requiring an explicit RAG_BASE_URL and the accepted canonical root/namespace/space mapping.
+- Local file reads and ordered directory results are preserved; provider work uses server credentials.
+- APEX no longer exposes Chroma owner handles. Evaluators and standalone provider operations remain local.
+- Missing targets and unmapped roots/spaces fail closed; HTTP errors never retry or fall back to local storage.
+
 ## [1.4.0] — 2026-09-12
 
 ### Added

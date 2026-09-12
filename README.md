@@ -5,7 +5,7 @@
 
 Canonical AXIOM Retrieval-Augmented Generation library and HTTP service.
 
-Version 1.4.0 supports document ingestion, Gemini embeddings, ChromaDB-backed
+Version 1.5.0 (unreleased) supports document ingestion, Gemini embeddings, ChromaDB-backed
 semantic retrieval, grounded source-cited generation, retrieval evaluation,
 single-owner persistent storage, journaled process-crash recovery, and a bounded
 HTTP compatibility client.
@@ -16,15 +16,14 @@ Python 3.11+ · Gemini API · ChromaDB 1.5.2 · Flask · MIT
 
 `axiom-rag` supports two access modes:
 
-- embedded Python/CLI access to the local persistent store;
+- embedded owner-side Python/evaluator access to the local persistent store;
 - a server-owned HTTP boundary.
 
-A persistence root has one cooperating process owner. Do not run embedded CLI,
-embedded APEX storage access, and a RAG server against the same root
-concurrently.
+A persistence root has one cooperating process owner. Local evaluators and
+owner-side Python callers cannot open the root concurrently with its RAG server.
 
 The versioned HTTP storage API and `rag.http_client.Client` are implemented.
-CLI and APEX storage adapters have not yet migrated to that client.
+CLI and APEX public storage adapters use that client through `rag.remote`.
 `rag_multi_query` continues to use the existing `/query` route.
 
 ## Install
@@ -41,10 +40,28 @@ For a regular installation:
 python -m pip install axiom-rag
 ```
 
-Gemini-backed ingest, embedding, and generation require `GEMINI_API_KEY`.
-Store-only inspection does not.
+Server-side Gemini work requires the server's own `GEMINI_API_KEY`. Migrated
+CLI/APEX callers do not need or forward a provider key. Standalone local
+provider operations and evaluators retain their own credentials.
 
 ## CLI
+
+Start the host-local server separately with `python -m server.app`, providing
+`GEMINI_API_KEY` only in its environment for text ingestion/query. Then explicitly
+set the caller target:
+
+```bash
+export RAG_BASE_URL=http://127.0.0.1:8000
+```
+
+This deployment maps only canonical `~/.rag/chroma`, collection
+`documents-gemini-embedding-2`, and space `google-gemini / gemini-embedding-2 /
+3072 / schema 1`. Missing URL or other roots/namespaces/spaces fail closed.
+These are adapter deployment constraints, not changed `rag.config` defaults.
+The root selector is checked locally; clients do not open it or send it to the server.
+Loopback uses no token; an explicitly configured `RAG_API_TOKEN` is sent as bearer.
+No new service discovery, retry, redirect or local fallback is provided.
+
 
 ```bash
 rag create
@@ -70,6 +87,7 @@ Environment variables are resolved explicitly through `rag.config`.
 
 | Variable                     | Default                                    | Purpose                                         |
 | ---------------------------- | ------------------------------------------ | ----------------------------------------------- |
+| `RAG_BASE_URL`              | no storage-client default                  | Required explicit CLI/APEX service target.      |
 | `GEMINI_API_KEY`             | unset                                      | Authenticate Gemini embedding/generation calls. |
 | `RAG_CHROMA_PATH`            | `~/.rag/chroma`                            | Persistent ChromaDB root.                       |
 | `RAG_COLLECTION`             | `documents-gemini-embedding-2`             | Default collection/namespace.                   |
@@ -252,6 +270,7 @@ rag/
 ├── embedder.py         Gemini embedding adapter
 ├── generator.py        grounded Gemini generation
 ├── http_client.py      bounded /v1 client
+├── remote.py           mapped CLI/APEX HTTP adapters and local file reads
 ├── persistence.py      ownership/journal primitives
 ├── pipeline.py         ingest/query orchestration
 ├── space.py            embedding-space/vector validation
@@ -290,9 +309,20 @@ selected.
 
 ## Migration status and limitations
 
-The protected server/client storage contract is available, but the existing CLI
-and APEX storage adapters still require an explicit deployment mapping before
-HTTP-only migration.
+CLI and APEX storage adapters are migrated for the explicit host-local mapping.
+Install matching source/wheels; APEX requires RAG 1.5.0 for these adapters.
+`rag.store` and `rag.pipeline` remain embedded owner/evaluator interfaces.
+Evaluators retain their local `documents` dataset; no HTTP grant or migration is
+implied. Public remote create returns an acknowledgement rather than a Chroma
+handle. HTTP failures raise redacted `RemoteError` and CLI execution fails visibly;
+there is no success inference or replay after an unknown mutation outcome.
+
+File discovery/reads remain local, preserving basename and relative POSIX IDs,
+UTF-8 replacement decoding, bounded parallel directory work and ordered results.
+Directory ingestion remains nontransactional and may partially succeed.
+Caller-resolved chunk/retrieval settings are sent explicitly. RAG/CLI keeps
+`gemini-2.5-flash`; APEX keeps `gemini-3.5-flash-lite`; the server permits both.
+Do not force a shared generation override merely to configure this deployment.
 
 Do not assume:
 

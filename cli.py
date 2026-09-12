@@ -11,7 +11,7 @@ Usage:
   rag create                 # requires an unused RAG_COLLECTION
 
 Environment:
-  GEMINI_API_KEY   Required for ingest and query.
+  RAG_BASE_URL    Required explicit RAG service URL. Provider keys stay on server.
   (See .env.example for full configuration options.)
 """
 import sys
@@ -20,7 +20,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from rag.config import load_config
-from rag import pipeline, store
+from rag import remote as pipeline, remote as store
 
 
 def _usage(msg: str | None = None) -> None:
@@ -37,8 +37,7 @@ def main() -> None:
         _usage()
 
     cmd, *rest = args
-    # Config is always the same call; API key validation is deferred to
-    # embed/generate operations, so store-only commands work without a key.
+    # Resolve caller settings; provider credentials are never sent to the server.
     config = load_config()
 
     if cmd == "ingest":

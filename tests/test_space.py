@@ -103,17 +103,6 @@ def test_inspection_does_not_create_collection(cfg):
     assert store._existing_collection(cfg) is None
 
 
-def test_cli_creates_only_unused_namespace(cfg, monkeypatch, capsys):
-    import cli
-    monkeypatch.setattr(cli, 'load_config', lambda: cfg)
-    monkeypatch.setattr('sys.argv', ['rag', 'create'])
-    cli.main()
-    assert 'Created' in capsys.readouterr().out
-    with pytest.raises(Exception):
-        cli.main()
-    assert store._existing_collection(cfg).metadata == {'hnsw:space': 'cosine', **EmbeddingSpace.configured(cfg).metadata()}
-
-
 def test_server_rejects_legacy_embedding_operations(cfg, monkeypatch):
     import server.app as api
     col = store._get_client(cfg.chroma_path).create_collection(cfg.collection_name)

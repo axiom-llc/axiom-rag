@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "axiom-rag"
-version = "1.4.0"
+version = "1.5.0"
 description = "Production RAG pipeline — grounded retrieval, source-cited answers, Precision@k + MRR eval"
 authors = [{ name = "Axiom LLC", email = "axiom.co@proton.me" }]
 readme = "README.md"

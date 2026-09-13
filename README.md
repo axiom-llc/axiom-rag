@@ -1,4 +1,3 @@
-[![PyPI](https://img.shields.io/pypi/v/axiom-rag.svg)](https://pypi.org/project/axiom-rag/)
 ![CI](https://github.com/axiom-llc/axiom-rag/actions/workflows/ci.yml/badge.svg)
 
 # axiom-rag
@@ -28,21 +27,36 @@ CLI and APEX public storage adapters use that client through `rag.remote`.
 
 ## Install
 
+Python 3.11 or 3.12 is validated. Version 1.5.0 is **unreleased**.
+Current AXIOM distribution is prepared for [GitHub Releases](https://github.com/axiom-llc/axiom-rag/releases).
+The legacy PyPI package does not provide this source architecture; do not use a
+bare `pip install axiom-rag` to obtain it.
+
+After the releases below are published, install the exact wheels in a fresh environment:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install \
+  "axiom-rag @ https://github.com/axiom-llc/axiom-rag/releases/download/v1.5.0/axiom_rag-1.5.0-py3-none-any.whl"
+python -m pip check
+```
+
+These versioned URLs are future release targets, not a claim that assets already exist.
+See [release gates and checksum verification](RELEASE.md). Third-party dependencies
+may still be downloaded from the public Python index; no AXIOM PyPI account is needed.
+
+For development before publication, run from this checkout:
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[dev]'
-````
-
-For a regular installation:
-
-```bash
-python -m pip install axiom-rag
 ```
 
 Server-side Gemini work requires the server's own `GEMINI_API_KEY`. Migrated
-CLI/APEX callers do not need or forward a provider key. Standalone local
-provider operations and evaluators retain their own credentials.
+CLI/APEX callers do not need or forward it. Local provider operations and
+evaluators retain their own credentials.
 
 ## CLI
 

@@ -8,6 +8,8 @@ Versioning: Semantic Versioning (semver.org)
 ## [1.5.0] — Unreleased
 
 ### Changed
+- Prepare GitHub wheel/sdist distribution with exact-source builds, checksums and clean-install CI; retire PyPI publication.
+- Package metadata describes validated scope without claiming production readiness.
 - CLI and APEX public storage adapters use the bounded HTTP client, requiring an explicit RAG_BASE_URL and the accepted canonical root/namespace/space mapping.
 - Local file reads and ordered directory results are preserved; provider work uses server credentials.
 - APEX no longer exposes Chroma owner handles. Evaluators and standalone provider operations remain local.

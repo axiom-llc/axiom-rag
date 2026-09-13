@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "axiom-rag"
 version = "1.5.0"
-description = "Production RAG pipeline — grounded retrieval, source-cited answers, Precision@k + MRR eval"
+description = "RAG library and HTTP service — single-owner storage, bounded clients, retrieval evaluation"
 authors = [{ name = "Axiom LLC", email = "axiom.co@proton.me" }]
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
 keywords = ["rag", "retrieval", "llm", "embeddings", "chromadb", "gemini"]
 classifiers = [
-  "Development Status :: 5 - Production/Stable",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3.11",
@@ -32,6 +32,7 @@ dev = ["pytest>=8.0"]
 rag = "cli:main"
 
 [project.urls]
+Releases = "https://github.com/axiom-llc/axiom-rag/releases"
 Homepage = "https://axiom-llc.github.io"
 Repository = "https://github.com/axiom-llc/axiom-rag"
 Changelog = "https://github.com/axiom-llc/axiom-rag/blob/main/CHANGELOG.md"

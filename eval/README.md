@@ -1,88 +1,64 @@
-# Retrieval Evaluation
+# Retrieval evaluation
 
-Measures retrieval quality against a ground-truth dataset using two metrics:
+`eval_retrieval.py` measures a locally owned Chroma collection against a
+ground-truth JSON dataset. It reports Precision@k and mean reciprocal rank
+(MRR). This evaluator is an owner-side, live-provider tool; it is not part of
+the server-owned HTTP storage API and must not open a persistence root while the
+RAG server owns that root.
 
-- **Precision@k** — fraction of top-k retrieved chunks whose `doc_id` is in the ground-truth relevant set
-- **MRR (Mean Reciprocal Rank)** — 1 / rank of the first relevant chunk; measures how early a relevant result surfaces
+## Metrics
 
----
+- **Precision@k**: relevant retrieved chunks divided by `k`.
+- **MRR**: reciprocal rank of the first relevant retrieved chunk, or zero when
+  none is retrieved.
 
-## Setup
+Metrics assess the supplied dataset and collection only. They do not establish
+general retrieval quality, grounding quality, or provider availability.
 
-Ingest your documents before running eval:
+## Prepare an isolated evaluation collection
+
+The evaluator imports `rag.embedder` and `rag.store` directly, calls Gemini to
+embed each query, and has no HTTP-client fallback. Use a persistence root and
+collection that are not concurrently owned by `python -m server.app` or another
+cooperating RAG process. It defaults to `~/.rag/chroma` and collection
+`documents` (not the migrated HTTP namespace).
+
+Set `GEMINI_API_KEY`, then ingest the evaluation corpus through a compatible
+local owner workflow before evaluation. Do not point it at the canonical RAG
+service root while that service is running.
+
+## Run
+
+From the repository root:
 
 ```bash
-rag ingest ./docs
-```
-
-The eval script queries the same ChromaDB collection used by the pipeline.
-`GEMINI_API_KEY` is required (embedding calls are live).
-
----
-
-## Usage
-
-```bash
-# Default: precision@5, tabular output
+export GEMINI_API_KEY='...'
 python eval/eval_retrieval.py --dataset eval/dataset.json
-
-# Adjust k
 python eval/eval_retrieval.py --dataset eval/dataset.json --top-k 3
-
-# JSON output (for scripting / CI integration)
 python eval/eval_retrieval.py --dataset eval/dataset.json --json
+```
 
-# Non-default collection
+Select a separate collection or root explicitly when required:
+
+```bash
 python eval/eval_retrieval.py \
-    --dataset eval/dataset.json \
-    --chroma-path ~/.rag/chroma \
-    --collection my-collection
+  --dataset eval/dataset.json \
+  --chroma-path /path/to/eval-chroma \
+  --collection eval-documents \
+  --top-k 5
 ```
 
-### Example output
+`--dataset` must name a JSON list whose entries contain `query` and
+`relevant_doc_ids`. The IDs must match the document IDs stored in the evaluated
+collection. `--json` emits a machine-readable report; the default is a table.
 
-```
-Query                                       P@5       RR
-------------------------------------------------------
-what is the refund policy?                  0.600     1.000
-how do I cancel my subscription?            0.400     0.500
-what data is collected about users?         0.800     1.000
-------------------------------------------------------
-Mean Precision@5: 0.600
-MRR:              0.833
-```
+The evaluator sets its query threshold to `0.0` to preserve ranking for the
+metrics. This differs intentionally from the pipeline's configurable retrieval
+threshold.
 
----
+## Boundaries and validation
 
-## Dataset format
-
-`eval/dataset.json` is a list of query/relevant-doc-id pairs:
-
-```json
-[
-  {
-    "query": "what is the refund policy?",
-    "relevant_doc_ids": ["refund-policy"]
-  }
-]
-```
-
-`relevant_doc_ids` should match the `doc_id` values used during `rag ingest`.
-Replace the sample entries with queries and doc IDs from your own collection.
-
----
-
-## Tuning guidance
-
-| Metric is low | Likely cause | Adjustment |
-|---|---|---|
-| Precision@k | Score threshold too aggressive | Lower `RAG_SCORE_THRESHOLD` |
-| MRR | Relevant chunks buried | Increase `RAG_TOP_K`; review chunk size |
-| Both | Embedding mismatch | Verify `task_type` separation in `embedder.py` |
-
----
-
-## Notes
-
-- Score threshold is set to `0.0` during eval to capture full ranking. The production threshold (`RAG_SCORE_THRESHOLD`) is applied by the pipeline at query time, not here.
-- Eval is intentionally omitted from CI — it requires a live Gemini API key and an ingested collection. Run it manually when tuning retrieval parameters.
+Evaluation performs live Gemini embedding calls and therefore is excluded from
+offline CI. It does not create an HTTP namespace grant or validate a production
+deployment. Verify corpus provenance, relevance labels, embedding-space
+compatibility, and single-owner operation before using results to make decisions.

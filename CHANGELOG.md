@@ -5,7 +5,7 @@ Versioning: Semantic Versioning (semver.org)
 
 ---
 
-## [1.5.0] — Unreleased
+## [1.5.0] — 2026-09-13
 
 ### Changed
 - Prepare GitHub wheel/sdist distribution with exact-source builds, checksums and clean-install CI; retire PyPI publication.
@@ -60,5 +60,6 @@ Initial stable release.
 
 ---
 
+[1.5.0]: https://github.com/axiom-llc/axiom-rag/releases/tag/v1.5.0
 [1.0.1]: https://github.com/axiom-llc/axiom-rag/releases/tag/v1.0.1
 [1.0.0]: https://github.com/axiom-llc/axiom-rag/releases/tag/v1.0.0

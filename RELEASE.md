@@ -1,7 +1,6 @@
 # Distribution and release gates
 
-Version 1.5.0 is unreleased. This document prepares publication; it does not
-authorize a tag, release, upload, or paid service.
+Version 1.5.0 was published on 2026-09-13 as an immutable GitHub Release at commit `ef006233e2a6c9df5e783dec64affe035809ff3a`. This document records reproducible distribution checks and future release gates; it does not authorize a new tag, release, upload, or paid service.
 
 ## Decision
 
@@ -58,32 +57,30 @@ python -m pip check
 ```
 
 Checksums detect changed bytes relative to the downloaded manifest, not an
-independent identity guarantee. Before first publication, enable and verify
-[GitHub release immutability](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases)
-in repository settings; do not assume a versioned URL or tag alone is immutable.
+independent identity guarantee. GitHub reports `v1.5.0` as immutable. For future
+releases, verify [GitHub release immutability](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases)
+before publication; do not assume a versioned URL or tag alone is immutable.
 Future immutable releases also carry GitHub release attestations. Never replace
 released assets or move a released tag; use a new version for corrections.
 
-## Future release sequence (separate authorization required)
+## Future dependent-release sequence (separate authorization required)
 
-1. Review exact RAG/APEX source SHAs, release notes and metadata. Require green
+1. Re-verify the published immutable RAG `v1.5.0` release, exact source SHA,
+   downloadable wheel/sdist checksums, installed version, `pip check`, imports,
+   and non-provider CLI in a fresh environment.
+2. Review the exact APEX source SHA, release notes and metadata. Require green
    owning CI and Distribution checks on Python 3.11 and 3.12, matching wheel/sdist
    builds, clean installs outside checkouts, `pip check`, CLI and adapter smoke.
    APEX owning CI must retain its real kernel isolation probes.
-2. Enable/verify release immutability and confirm zero-cost repository/runner
-   eligibility. Update `Unreleased` wording/date only when actually releasing.
-3. With explicit owner authorization, create/push RAG `v1.5.0` at the approved
-   RAG commit. Dispatch `distribution.yml` from `main`, selecting that tag and
-   `publish=true`. Default `publish=false` only validates. Never publish from an
-   old tag containing the retired PyPI workflow.
-4. Verify RAG's downloadable wheel and sdist checksums, recorded commit, installed
-   version, `pip check`, imports and non-provider CLI in a fresh environment.
-5. Only then, with authorization, create/push APEX `v3.1.1` at its approved commit
-   and dispatch its Distribution workflow with the same explicit publication flag.
-   Its publication validation **requires the published RAG 1.5.0 assets**, verifies
-   checksums, and installs both wheels in an isolated environment. Ordinary CI
-   uses exact pinned RAG source while RAG remains unpublished.
-6. Verify downloadable APEX plus RAG together from outside source trees; check
+3. Verify release immutability and zero-cost repository/runner eligibility for the
+   future APEX release. Update APEX `Unreleased` wording/date only when actually
+   releasing it.
+4. Only with explicit owner authorization, create/push APEX `v3.2.0` at its
+   approved commit and dispatch its Distribution workflow with the explicit
+   publication flag. Its publication validation **requires the published RAG
+   1.5.0 assets**, verifies checksums, and installs both wheels in an isolated
+   environment. Ordinary CI may continue to use exact pinned RAG source.
+5. Verify downloadable APEX plus RAG together from outside source trees; check
    versions, dependency resolution, adapter behavior and CLI. Retain artifact
    hashes and source revisions as the release acceptance evidence.
 

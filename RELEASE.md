@@ -43,8 +43,8 @@ Pass `--tag v1.5.0` only when that existing tag points to HEAD and matches
 
 ## Installation and integrity
 
-Once separately authorized releases exist, download all assets for each required
-package using first-party `gh` (public HTTPS links work without authentication):
+Download the published RAG 1.5.0 assets using first-party `gh`
+(public HTTPS links work without authentication):
 
 ```bash
 gh release download v1.5.0 -R axiom-llc/axiom-rag --dir axiom-rag-dist \

@@ -4,7 +4,7 @@
 
 Canonical AXIOM Retrieval-Augmented Generation library and HTTP service.
 
-Version 1.5.0 (unreleased) supports document ingestion, Gemini embeddings, ChromaDB-backed
+Version 1.5.0 supports document ingestion, Gemini embeddings, ChromaDB-backed
 semantic retrieval, grounded source-cited generation, retrieval evaluation,
 single-owner persistent storage, journaled process-crash recovery, and a bounded
 HTTP compatibility client.
@@ -27,12 +27,13 @@ CLI and APEX public storage adapters use that client through `rag.remote`.
 
 ## Install
 
-Python 3.11 or 3.12 is validated. Version 1.5.0 is **unreleased**.
-Current AXIOM distribution is prepared for [GitHub Releases](https://github.com/axiom-llc/axiom-rag/releases).
+Python 3.11 or 3.12 is validated. Version 1.5.0 is
+[published on GitHub Releases](https://github.com/axiom-llc/axiom-rag/releases/tag/v1.5.0)
+with a wheel, source archive, checksums, and build provenance.
 The legacy PyPI package does not provide this source architecture; do not use a
 bare `pip install axiom-rag` to obtain it.
 
-After the releases below are published, install the exact wheels in a fresh environment:
+Install the published wheel in a fresh environment:
 
 ```bash
 python -m venv .venv
@@ -42,11 +43,11 @@ python -m pip install \
 python -m pip check
 ```
 
-These versioned URLs are future release targets, not a claim that assets already exist.
-See [release gates and checksum verification](RELEASE.md). Third-party dependencies
+The URL above targets the published 1.5.0 wheel.
+See [checksum verification and future release gates](RELEASE.md). Third-party dependencies
 may still be downloaded from the public Python index; no AXIOM PyPI account is needed.
 
-For development before publication, run from this checkout:
+For development from the current source checkout:
 
 ```bash
 python -m venv .venv

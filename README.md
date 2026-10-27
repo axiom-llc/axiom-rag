@@ -11,6 +11,18 @@ HTTP compatibility client.
 
 Python 3.11+ · Gemini API · ChromaDB 1.5.2 · Flask · MIT
 
+## Implementation evidence
+
+| Inspect | What it demonstrates |
+| --- | --- |
+| [Storage implementation](rag/store.py) and [journal primitives](rag/persistence.py) | Single-owner replacement and recovery mechanics. |
+| [Crash-recovery tests](tests/test_recovery.py) | Real Chroma subprocess termination with synthetic data and no live provider. |
+| [HTTP client](rag/http_client.py) and [compatibility tests](tests/test_http_compat.py) | Bounded requests, explicit identities and server-side validation. |
+
+Tests and source are project-controlled evidence, not independent assurance or
+proof of production deployment. Live embedding/generation requires provider
+credentials and may incur provider charges; offline tests mock provider access.
+
 ## Current boundary
 
 `axiom-rag` supports two access modes:
@@ -47,9 +59,13 @@ The URL above targets the published 1.5.0 wheel.
 See [checksum verification and future release gates](RELEASE.md). Third-party dependencies
 may still be downloaded from the public Python index; no AXIOM PyPI account is needed.
 
-For development from the current source checkout:
+For development, use Linux (the storage owner uses POSIX `flock`; the
+process-crash guarantees below were tested on Linux). From a directory where
+`axiom-rag` does not already exist:
 
 ```bash
+git clone https://github.com/axiom-llc/axiom-rag.git
+cd axiom-rag
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[dev]'

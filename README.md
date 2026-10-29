@@ -1,8 +1,8 @@
 ![CI](https://github.com/axiom-llc/axiom-rag/actions/workflows/ci.yml/badge.svg)
 
-# axiom-rag
+# AXIOM RAG — Retrieval Infrastructure
 
-Canonical AXIOM Retrieval-Augmented Generation library and HTTP service.
+Advanced retrieval infrastructure for AXIOM AI systems: a Retrieval-Augmented Generation library and HTTP service.
 
 Version 1.5.0 supports document ingestion, Gemini embeddings, ChromaDB-backed
 semantic retrieval, grounded source-cited generation, retrieval evaluation,

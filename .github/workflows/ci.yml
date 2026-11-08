@@ -22,6 +22,20 @@ jobs:
         run: pip install -e ".[dev]" pytest-cov
       - name: Run tests
         run: pytest tests/ -v --tb=short --cov=rag --cov-report=xml --cov-report=term-missing
+      - name: Generate pinned native RSI proposal (read-only)
+        run: python -m rsi.native --output "$RUNNER_TEMP/rsi-candidates.json"
+      - name: Independently benchmark native RSI candidate
+        run: python -m rsi.benchmark --output "$RUNNER_TEMP/rsi-benchmark.json"
+      - name: Retain native RSI candidate and benchmark receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-rsi-${{ matrix.python-version }}
+          path: |
+            ${{ runner.temp }}/rsi-candidates.json
+            ${{ runner.temp }}/rsi-benchmark.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         env:

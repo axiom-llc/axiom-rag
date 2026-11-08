@@ -1,0 +1,17 @@
+{
+  "schema": "axiom-native-rsi/v1",
+  "repository": "axiom-llc/axiom-rag",
+  "rules": [
+    {
+      "id": "chunk-fixed-remove-redundant-slice",
+      "path": "rag/chunker.py",
+      "before": "        if words[index : index + chunk_size]\n",
+      "after": "",
+      "benchmark": "rsi/benchmark.py",
+      "tests": [
+        "tests/test_chunker.py",
+        "tests/test_rsi_native.py"
+      ]
+    }
+  ]
+}
